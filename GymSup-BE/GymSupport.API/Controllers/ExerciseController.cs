@@ -1,4 +1,4 @@
-﻿using GymSupport.Repository.Interfaces;
+using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.Exercise;
 using GymSupport.Repository.Models.Entities;
 using Microsoft.AspNetCore.Authorization;

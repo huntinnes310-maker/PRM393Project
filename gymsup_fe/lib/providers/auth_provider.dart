@@ -8,16 +8,21 @@ class AuthProvider extends ChangeNotifier {
 
   AuthStatus _status = AuthStatus.unknown;
   String? _userId;
+  String? _role;
   String? _errorMessage;
   bool _isLoading = false;
   bool _justLoggedIn = false;
 
   AuthStatus get status => _status;
   String? get userId => _userId;
+  String? get role => _role;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
   bool get justLoggedIn => _justLoggedIn;
+  bool get isManager => _role == 'Manager';
+  bool get isAdmin => _role == 'Admin';
+  bool get isManagerOrAdmin => _role == 'Manager' || _role == 'Admin';
 
   void clearJustLoggedIn() {
     _justLoggedIn = false;
@@ -28,9 +33,11 @@ class AuthProvider extends ChangeNotifier {
     final loggedIn = await _authService.isLoggedIn();
     if (loggedIn) {
       _userId = await _authService.getCurrentUserId();
+      _role = await _authService.getCurrentUserRole();
       _status = AuthStatus.authenticated;
     } else {
       _status = AuthStatus.unauthenticated;
+      _role = null;
     }
     notifyListeners();
   }
@@ -47,6 +54,7 @@ class AuthProvider extends ChangeNotifier {
 
     if (result['success']) {
       _userId = result['data']['userId'];
+      _role = result['data']['role'];
       _status = AuthStatus.authenticated;
       _justLoggedIn = true;
       notifyListeners();
@@ -86,10 +94,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Đăng xuất
+  /// Đăng xuất - xóa token
   Future<void> logout() async {
     await _authService.logout();
     _userId = null;
+    _role = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }

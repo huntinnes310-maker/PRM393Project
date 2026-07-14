@@ -5,8 +5,8 @@ import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/home/home_screen.dart';
 import '../presentation/screens/exercise/exercise_list_screen.dart';
 import '../presentation/screens/exercise/exercise_detail_screen.dart';
-
 import '../presentation/screens/profile/survey_screen.dart';
+import '../presentation/screens/manager/manager_dashboard_screen.dart';
 
 class AppRouter {
   static GoRouter createRouter(AuthProvider authProvider) {
@@ -27,9 +27,20 @@ class AppRouter {
           return '/login';
         }
 
-        // Đã đăng nhập nhưng đang ở trang auth -> vào home
-        if (status == AuthStatus.authenticated && isOnAuthPage) {
-          return '/home';
+        // Đã đăng nhập
+        if (status == AuthStatus.authenticated) {
+          final isManagerOrAdmin = authProvider.isManagerOrAdmin;
+          if (isManagerOrAdmin) {
+            // Manager/Admin đăng nhập thành công -> luôn đưa về /manager/dashboard
+            if (isOnAuthPage || state.matchedLocation == '/home') {
+              return '/manager/dashboard';
+            }
+          } else {
+            // Khách hàng đăng nhập thành công nhưng ở trang auth -> vào home
+            if (isOnAuthPage || state.matchedLocation == '/manager/dashboard') {
+              return '/home';
+            }
+          }
         }
 
         return null;
@@ -71,6 +82,11 @@ class AppRouter {
           path: '/profile/survey',
           name: 'survey',
           builder: (context, state) => const SurveyScreen(),
+        ),
+        GoRoute(
+          path: '/manager/dashboard',
+          name: 'manager_dashboard',
+          builder: (context, state) => const ManagerDashboardScreen(),
         ),
       ],
     );

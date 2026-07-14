@@ -22,6 +22,7 @@ class AuthService {
         await prefs.setString(AppConstants.tokenKey, data['token'] ?? '');
         await prefs.setString(AppConstants.userIdKey, data['userId'] ?? '');
         await prefs.setString(AppConstants.userEmailKey, email);
+        await prefs.setString(AppConstants.userRoleKey, data['role'] ?? 'Customer');
         return {'success': true, 'data': data};
       }
 
@@ -74,6 +75,7 @@ class AuthService {
     await prefs.remove(AppConstants.tokenKey);
     await prefs.remove(AppConstants.userIdKey);
     await prefs.remove(AppConstants.userEmailKey);
+    await prefs.remove(AppConstants.userRoleKey);
   }
 
   /// Kiểm tra xem người dùng đã đăng nhập chưa
@@ -87,5 +89,11 @@ class AuthService {
   Future<String?> getCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(AppConstants.userIdKey);
+  }
+
+  /// Lấy role hiện tại
+  Future<String?> getCurrentUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(AppConstants.userRoleKey);
   }
 }

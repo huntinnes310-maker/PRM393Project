@@ -36,7 +36,7 @@ namespace GymSupport.API.Controllers
             if (currentUser == null)
                 return Forbid();
 
-            if (currentUser.Id != userId && currentUser.Role != "Admin")
+            if (currentUser.Id != userId && currentUser.Role != "Admin" && currentUser.Role != "Manager")
                 return Forbid();
 
             var customer = await _customerRepository.GetByUserIdAsync(userId);
