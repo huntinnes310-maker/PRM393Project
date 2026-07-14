@@ -1,5 +1,6 @@
 using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.WorkoutPlan;
+using GymSupport.Repository.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -70,6 +71,56 @@ public class MuscleProgressController : ControllerBase
             .ToList();
 
         return Ok(result);
+    }
+
+    [HttpPost("add-xp")]
+    public async Task<IActionResult> AddXp([FromBody] AddMuscleXpRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.MuscleId))
+            return BadRequest("Dữ liệu yêu cầu không hợp lệ.");
+
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrWhiteSpace(currentUserId))
+            return Unauthorized();
+
+        if (currentUserId != request.UserId)
+            return Forbid();
+
+        var muscle = await _muscleRepository.GetByIdAsync(request.MuscleId);
+        if (muscle == null)
+            return NotFound("Không tìm thấy nhóm cơ.");
+
+        var existing = await _progressRepository.GetByUserAndMuscleAsync(request.UserId, request.MuscleId);
+        var oldTotalExp = existing?.TotalExp ?? 0;
+        var newTotalExp = oldTotalExp + request.ExpAmount;
+        var oldLevel = Math.Max(1, oldTotalExp / ExpPerLevel + 1);
+        var newLevel = Math.Max(1, newTotalExp / ExpPerLevel + 1);
+
+        var progress = existing ?? new UserMuscleProgress
+        {
+            UserId = request.UserId,
+            MuscleId = request.MuscleId
+        };
+        progress.MuscleName = string.IsNullOrWhiteSpace(muscle.Name) ? muscle.Category : muscle.Name;
+        progress.MuscleCategory = muscle.Category ?? "";
+        progress.TotalExp = newTotalExp;
+        progress.Level = newLevel;
+        progress.CurrentLevelExp = newTotalExp % ExpPerLevel;
+        progress.ExpToNextLevel = ExpPerLevel;
+
+        await _progressRepository.UpsertAsync(progress);
+
+        return Ok(new
+        {
+            muscleId = request.MuscleId,
+            muscleName = progress.MuscleName,
+            oldLevel = oldLevel,
+            newLevel = newLevel,
+            totalExp = newTotalExp,
+            isLevelUp = newLevel > oldLevel
+        });
     }
 
     private static string ResolveTier(int level)

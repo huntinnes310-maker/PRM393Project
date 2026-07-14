@@ -1,0 +1,60 @@
+name: gymsup
+description: "GymSup - Ứng dụng hỗ trợ tập gym thông minh"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # --- Networking & API ---
+  http: ^1.2.2                        # Gọi REST API tới Backend ASP.NET
+
+  # --- State Management ---
+  provider: ^6.1.2                    # Quản lý state toàn app
+
+  # --- Navigation ---
+  go_router: ^14.6.2                  # Điều hướng màn hình
+
+  # --- Local Storage ---
+  shared_preferences: ^2.3.3          # Lưu token và settings (hoạt động cả web lẫn mobile)
+
+  # --- UI & Typography ---
+  google_fonts: ^6.2.1                # Font đẹp (Inter, Outfit...)
+
+  # --- Charts & Visualization ---
+  fl_chart: ^0.70.2                   # Biểu đồ tiến trình workout/thể hình
+  percent_indicator: ^4.2.3           # Thanh tiến trình EXP/calo
+
+  # --- Images ---
+  cached_network_image: ^3.4.1        # Load ảnh từ Cloudinary
+
+  # --- Loading & Animations ---
+  shimmer: ^3.0.0                     # Loading skeleton effect
+  lottie: ^3.1.3                      # Animation JSON (splash screen...)
+
+  # --- Utilities ---
+  intl: ^0.20.2                       # Format ngày giờ, số
+  video_player: ^2.12.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+    - assets/exercises/images/
+    - assets/exercises/videos/

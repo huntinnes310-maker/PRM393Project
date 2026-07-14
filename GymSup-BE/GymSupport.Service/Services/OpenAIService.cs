@@ -1,4 +1,4 @@
-﻿using GymSupport.Repository.Interfaces;
+using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.AIModel;
 using GymSupport.Repository.Models.Entities;
 using GymSupport.Service.Interfaces;
@@ -695,6 +695,21 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync();
+            if (error.Contains("insufficient_quota") || error.Contains("invalid_api_key") || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                var demoReply = $"[Chế độ Demo - Tài khoản hết số dư] Chào bạn! Tôi là trợ lý ảo GymSup AI Coach. Hiện tại tài khoản OpenAI của bạn đã hết số dư khả dụng (lỗi `insufficient_quota`).\n\nTuy nhiên, để bạn không bị gián đoạn trải nghiệm, tôi đã kích hoạt chế độ Demo. Bạn vừa hỏi: \"{message}\".\n\n💡 Lời khuyên tập luyện: Để cải thiện sức khỏe toàn diện, hãy uống đủ nước, ngủ từ 7-8 tiếng mỗi ngày và duy trì chế độ ăn giàu protein nhé! Chúc bạn tập luyện vui vẻ! 💪";
+                
+                var demoResult = new ChatResponseDto
+                {
+                    Response = demoReply,
+                    Suggestions = new List<AISuggestionDto>()
+                };
+
+                await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "user", Content = message });
+                await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "assistant", Content = demoReply });
+
+                return demoResult;
+            }
             throw new Exception($"OpenAI Error: {error}");
         }
 
@@ -1122,7 +1137,7 @@ Trả về JSON đúng schema.
     List<string> frameFiles)
     {
         var apiKey = _configuration["OpenAI:ApiKey"];
-
+ 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new Exception("OpenAI API key is missing.");

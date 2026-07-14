@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace GymSupport.Repository.Models.Entities;
@@ -16,6 +16,8 @@ public class MealPlan
     public int Protein { get; set; }
     public int Carbs { get; set; }
     public int Fat { get; set; }
+    
+    public double WaterLiters { get; set; }
 
-    public List<MealItem> Meals { get; set; }
+    public List<MealItem> Meals { get; set; } = new();
 }
