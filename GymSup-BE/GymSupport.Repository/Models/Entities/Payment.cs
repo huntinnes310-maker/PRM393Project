@@ -11,6 +11,7 @@ public class Payment
 
     public string UserId { get; set; } = string.Empty;
     public string? CustomerId { get; set; }
+    public long OrderCode { get; set; }
 
     public string PaymentType { get; set; } = "Subscription";
     // Subscription, Other

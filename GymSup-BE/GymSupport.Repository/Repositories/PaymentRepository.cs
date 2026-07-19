@@ -18,12 +18,16 @@ namespace GymSupport.Repository.Repositories
             var customerIdIndex = Builders<Payment>.IndexKeys.Ascending(p => p.CustomerId);
             var createdAtIndex = Builders<Payment>.IndexKeys.Ascending(p => p.CreatedAt);
             var orderIdIndex = Builders<Payment>.IndexKeys.Ascending(p => p.OrderId);
+            var orderCodeIndex = Builders<Payment>.IndexKeys.Ascending(p => p.OrderCode);
             
             _payments.Indexes.CreateOne(new CreateIndexModel<Payment>(userIdIndex));
             _payments.Indexes.CreateOne(new CreateIndexModel<Payment>(customerIdIndex));
             _payments.Indexes.CreateOne(new CreateIndexModel<Payment>(createdAtIndex));
             _payments.Indexes.CreateOne(new CreateIndexModel<Payment>(
                 orderIdIndex,
+                new CreateIndexOptions { Unique = true, Sparse = true }));
+            _payments.Indexes.CreateOne(new CreateIndexModel<Payment>(
+                orderCodeIndex,
                 new CreateIndexOptions { Unique = true, Sparse = true }));
         }
 
@@ -32,6 +36,9 @@ namespace GymSupport.Repository.Repositories
 
         public async Task<Payment?> GetByOrderIdAsync(string orderId) =>
             await _payments.Find(p => p.OrderId == orderId).FirstOrDefaultAsync();
+
+        public async Task<Payment?> GetByOrderCodeAsync(long orderCode) =>
+            await _payments.Find(p => p.OrderCode == orderCode).FirstOrDefaultAsync();
 
         public async Task<IEnumerable<Payment>> GetByUserIdAsync(string userId) =>
             await _payments.Find(p => p.UserId == userId).ToListAsync();

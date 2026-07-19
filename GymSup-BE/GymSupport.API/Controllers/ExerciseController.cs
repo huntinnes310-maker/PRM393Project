@@ -40,7 +40,7 @@ public class ExercisesController : ControllerBase
             var muscles = await _muscleRepository.GetAllAsync();
 
             var muscleIds = muscles
-                .Where(m => string.Equals(m.Category, category, StringComparison.OrdinalIgnoreCase))
+                .Where(m => MuscleMatchesCategory(m, category))
                 .Select(m => m.Id)
                 .ToHashSet();
 
@@ -52,6 +52,26 @@ public class ExercisesController : ControllerBase
         }
 
         return Ok(exercises);
+    }
+
+    private static bool MuscleMatchesCategory(Muscle muscle, string requestedCategory)
+    {
+        var aliases = requestedCategory.Trim().ToLowerInvariant() switch
+        {
+            "chest" => new[] { "chest", "ngực" },
+            "back" => new[] { "back", "lưng", "latissimus", "rhomboid", "trapezius" },
+            "shoulders" or "shoulder" => new[] { "shoulder", "deltoid", "vai", "rotator cuff" },
+            "biceps" => new[] { "biceps", "tay trước", "nhị đầu", "brachialis" },
+            "triceps" => new[] { "triceps", "tay sau", "long head", "lateral head", "medial head" },
+            "legs" => new[] { "legs", "chân", "quadriceps", "hamstring", "calves", "adductor" },
+            "abs" or "core" => new[] { "abs", "core", "bụng", "oblique", "abdominis" },
+            "glutes" or "glute" => new[] { "glute", "mông" },
+            _ => new[] { requestedCategory.Trim().ToLowerInvariant() }
+        };
+
+        var searchable = $"{muscle.Category} {muscle.Name}";
+        return aliases.Any(alias =>
+            searchable.Contains(alias, StringComparison.OrdinalIgnoreCase));
     }
 
     [HttpGet("{id}")]

@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/exercise_provider.dart';
 import 'providers/profile_provider.dart';
+import 'providers/payment_provider.dart';
 import 'routes/app_router.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => HomeProvider()),
         ChangeNotifierProvider(create: (_) => ExerciseProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => PaymentProvider()..fetchMySubscription()),
       ],
       child: const GymSupApp(),
     ),

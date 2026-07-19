@@ -30,6 +30,23 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     'Glutes': 'Mông',
   };
 
+  static const Map<String, List<String>> _categoryAliases = {
+    'Chest': ['chest', 'ngực'],
+    'Back': ['back', 'lưng', 'latissimus', 'rhomboid', 'trapezius'],
+    'Shoulders': ['shoulder', 'deltoid', 'vai', 'rotator cuff'],
+    'Biceps': ['biceps', 'tay trước', 'nhị đầu', 'brachialis'],
+    'Triceps': [
+      'triceps',
+      'tay sau',
+      'long head',
+      'lateral head',
+      'medial head',
+    ],
+    'Legs': ['legs', 'chân', 'quadriceps', 'hamstring', 'calves', 'adductor'],
+    'Abs': ['abs', 'core', 'bụng', 'oblique', 'abdominis'],
+    'Glutes': ['glute', 'mông'],
+  };
+
   @override
   void initState() {
     super.initState();
@@ -56,20 +73,36 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
 
     // Thực hiện lọc local bài tập theo từ khóa và danh mục
     final filteredExercises = exerciseProvider.exercises.where((exercise) {
-      final nameMatches = exercise.name.toLowerCase().contains(_searchQuery.toLowerCase());
-      final equipmentMatches = exercise.equipment.toLowerCase().contains(_searchQuery.toLowerCase());
-      
+      final nameMatches = exercise.name.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+      final equipmentMatches = exercise.equipment.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+
       bool categoryMatches = true;
       if (_selectedCategory != 'All') {
-        // Ánh xạ category trong DB sang danh mục hiển thị
-        // Lấy danh sách các muscleId của exercise, đối chiếu tìm xem có muscle nào thuộc category đã chọn
         categoryMatches = exercise.muscleImpacts.any((impact) {
-          final muscle = exerciseProvider.muscles.firstWhere(
-            (m) => m.id == impact.muscleId,
-            orElse: () => mockMuscleForCategory(impact.muscleId, exercise.name),
-          );
-          return muscle.category.toLowerCase() == _selectedCategory.toLowerCase();
+          Muscle? matchedMuscle;
+          for (final muscle in exerciseProvider.muscles) {
+            if (muscle.id == impact.muscleId) {
+              matchedMuscle = muscle;
+              break;
+            }
+          }
+
+          return matchedMuscle != null &&
+              _muscleMatchesCategory(matchedMuscle, _selectedCategory);
         });
+
+        // Trong khoảnh khắc danh sách muscle chưa tải xong, vẫn có thể lọc
+        // bằng tên bài tập thay vì hiển thị danh sách rỗng sai lệch.
+        if (!categoryMatches && exerciseProvider.muscles.isEmpty) {
+          categoryMatches = _exerciseNameMatchesCategory(
+            exercise.name,
+            _selectedCategory,
+          );
+        }
       }
 
       return (nameMatches || equipmentMatches) && categoryMatches;
@@ -81,12 +114,6 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
           'Thư Viện Bài Tập',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.textPrimary),
-            onPressed: _loadData,
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -103,10 +130,16 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
               decoration: InputDecoration(
                 hintText: 'Tìm bài tập hoặc thiết bị...',
                 hintStyle: const TextStyle(color: AppColors.textSecondary),
-                prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: AppColors.textSecondary,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, color: AppColors.textSecondary),
+                        icon: const Icon(
+                          Icons.clear,
+                          color: AppColors.textSecondary,
+                        ),
                         onPressed: () {
                           _searchController.clear();
                           setState(() {
@@ -117,14 +150,20 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                     : null,
                 filled: true,
                 fillColor: AppColors.cardBackground,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 0,
+                  horizontal: 16,
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: AppColors.surfaceVariant),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  borderSide: const BorderSide(
+                    color: AppColors.primary,
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -148,17 +187,23 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                         _selectedCategory = entry.key;
                       });
                     },
-                    selectedColor: AppColors.primary.withOpacity(0.2),
+                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
                     checkmarkColor: AppColors.primary,
                     labelStyle: TextStyle(
-                      color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                     backgroundColor: AppColors.cardBackground,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
-                        color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.surfaceVariant,
                         width: isSelected ? 1 : 0.5,
                       ),
                     ),
@@ -176,145 +221,182 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                     child: CircularProgressIndicator(color: AppColors.primary),
                   )
                 : exerciseProvider.errorMessage != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                            const SizedBox(height: 16),
-                            Text(
-                              exerciseProvider.errorMessage!,
-                              style: const TextStyle(color: AppColors.textSecondary),
-                            ),
-                            const SizedBox(height: 12),
-                            ElevatedButton(
-                              onPressed: _loadData,
-                              child: const Text('Thử lại'),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: AppColors.error,
+                          size: 48,
                         ),
-                      )
-                    : filteredExercises.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Không tìm thấy bài tập phù hợp.',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            itemCount: filteredExercises.length,
-                            itemBuilder: (context, index) {
-                              final ex = filteredExercises[index];
-                              // Lấy nhóm cơ chính hiển thị đại diện
-                              String primaryMuscleName = 'Chưa xác định';
-                              if (ex.muscleImpacts.isNotEmpty) {
-                                primaryMuscleName = exerciseProvider.getMuscleNameById(
-                                  ex.muscleImpacts.first.muscleId,
-                                );
-                              }
+                        const SizedBox(height: 16),
+                        Text(
+                          exerciseProvider.errorMessage!,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: _loadData,
+                          child: const Text('Thử lại'),
+                        ),
+                      ],
+                    ),
+                  )
+                : filteredExercises.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Không tìm thấy bài tập phù hợp.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    itemCount: filteredExercises.length,
+                    itemBuilder: (context, index) {
+                      final ex = filteredExercises[index];
+                      // Lấy nhóm cơ chính hiển thị đại diện
+                      String primaryMuscleName = 'Chưa xác định';
+                      if (ex.muscleImpacts.isNotEmpty) {
+                        primaryMuscleName = exerciseProvider.getMuscleNameById(
+                          ex.muscleImpacts.first.muscleId,
+                        );
+                      }
 
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                color: AppColors.cardBackground,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: const BorderSide(color: AppColors.surfaceVariant),
-                                ),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(16),
-                                  onTap: () {
-                                    context.push('/exercises/${ex.id}');
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Row(
-                                      children: [
-                                        // Exercise Image
-                                        Container(
-                                          width: 75,
-                                          height: 75,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.surfaceVariant,
-                                            borderRadius: BorderRadius.circular(12),
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        color: AppColors.cardBackground,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: const BorderSide(
+                            color: AppColors.surfaceVariant,
+                          ),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () {
+                            context.push('/exercises/${ex.id}');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Row(
+                              children: [
+                                // Exercise Image
+                                Container(
+                                  width: 75,
+                                  height: 75,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: ex.displayImageUrl.isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
                                           ),
-                                          child: ex.displayImageUrl.isNotEmpty
-                                              ? ClipRRect(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  child: ex.isAssetImage
-                                                      ? Image.asset(
-                                                          ex.displayImageUrl,
-                                                          fit: BoxFit.cover,
-                                                          errorBuilder: (_, __, ___) =>
-                                                              const Icon(Icons.fitness_center, color: AppColors.primary),
-                                                        )
-                                                      : Image.network(
-                                                          ex.displayImageUrl,
-                                                          fit: BoxFit.cover,
-                                                          errorBuilder: (_, __, ___) =>
-                                                              const Icon(Icons.fitness_center, color: AppColors.primary),
-                                                        ),
-                                                )
-                                              : const Icon(Icons.fitness_center, color: AppColors.primary, size: 28),
-                                        ),
-                                        const SizedBox(width: 14),
-
-                                        // Info Text
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  // Difficulty Badge
-                                                  _buildDifficultyBadge(ex.difficulty),
-                                                  // Equipment Text
-                                                  Row(
-                                                    children: [
-                                                      const Icon(Icons.handyman_outlined, size: 12, color: AppColors.textSecondary),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        ex.equipment.split(',').first, // Chỉ lấy thiết bị chính
-                                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                          child: ex.isAssetImage
+                                              ? Image.asset(
+                                                  ex.displayImageUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, _, _) =>
+                                                      const Icon(
+                                                        Icons.fitness_center,
+                                                        color:
+                                                            AppColors.primary,
                                                       ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                ex.name,
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: AppColors.textPrimary,
+                                                )
+                                              : Image.network(
+                                                  ex.displayImageUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, _, _) =>
+                                                      const Icon(
+                                                        Icons.fitness_center,
+                                                        color:
+                                                            AppColors.primary,
+                                                      ),
                                                 ),
+                                        )
+                                      : const Icon(
+                                          Icons.fitness_center,
+                                          color: AppColors.primary,
+                                          size: 28,
+                                        ),
+                                ),
+                                const SizedBox(width: 14),
+
+                                // Info Text
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          // Difficulty Badge
+                                          _buildDifficultyBadge(ex.difficulty),
+                                          // Equipment Text
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.handyman_outlined,
+                                                size: 12,
+                                                color: AppColors.textSecondary,
                                               ),
-                                              const SizedBox(height: 4),
+                                              const SizedBox(width: 4),
                                               Text(
-                                                'Cơ chính: $primaryMuscleName',
+                                                ex.equipment
+                                                    .split(',')
+                                                    .first, // Chỉ lấy thiết bị chính
                                                 style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                  color:
+                                                      AppColors.textSecondary,
                                                 ),
                                               ),
                                             ],
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        ex.name,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textPrimary,
                                         ),
-                                        const SizedBox(width: 8),
-                                        const Icon(
-                                          Icons.arrow_forward_ios,
-                                          size: 16,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Cơ chính: $primaryMuscleName',
+                                        style: const TextStyle(
+                                          fontSize: 12,
                                           color: AppColors.textSecondary,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            },
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ],
+                            ),
                           ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -340,7 +422,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color, width: 0.5),
       ),
@@ -355,22 +437,63 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     );
   }
 
-  // Dự phòng khi muscle không được tải kịp từ DB
-  dynamic mockMuscleForCategory(String muscleId, String exerciseName) {
-    // Ước lượng category dựa vào tên bài tập nếu lỗi DB
-    final nameLower = exerciseName.toLowerCase();
-    String category = 'Chest';
-    if (nameLower.contains('squat') || nameLower.contains('leg') || nameLower.contains('lunge') || nameLower.contains('calf')) {
-      category = 'Legs';
-    } else if (nameLower.contains('row') || nameLower.contains('pull') || nameLower.contains('deadlift')) {
-      category = 'Back';
-    } else if (nameLower.contains('press') && nameLower.contains('shoulder') || nameLower.contains('lateral') || nameLower.contains('delt')) {
-      category = 'Shoulder';
-    } else if (nameLower.contains('curl') || nameLower.contains('pushdown') || nameLower.contains('extension') || nameLower.contains('dip')) {
-      category = 'Arms';
-    } else if (nameLower.contains('crunch') || nameLower.contains('plank') || nameLower.contains('twist') || nameLower.contains('abdominal')) {
-      category = 'Core';
-    }
-    return Muscle(id: muscleId, name: 'Khác', category: category);
+  bool _muscleMatchesCategory(Muscle muscle, String selectedCategory) {
+    final aliases = _categoryAliases[selectedCategory] ?? const <String>[];
+    final searchable = '${muscle.category} ${muscle.name}'.toLowerCase();
+    return aliases.any(searchable.contains);
+  }
+
+  bool _exerciseNameMatchesCategory(
+    String exerciseName,
+    String selectedCategory,
+  ) {
+    final name = exerciseName.toLowerCase();
+    const exerciseAliases = <String, List<String>>{
+      'Chest': ['bench press', 'chest press', 'fly', 'crossover', 'pec deck'],
+      'Back': [
+        'row',
+        'pull-up',
+        'pulldown',
+        'deadlift',
+        'rack pull',
+        'back extension',
+      ],
+      'Shoulders': [
+        'shoulder press',
+        'overhead press',
+        'lateral raise',
+        'front raise',
+        'rear delt',
+        'face pull',
+        'arnold press',
+      ],
+      'Biceps': ['curl', 'chin-up'],
+      'Triceps': [
+        'pushdown',
+        'skull crusher',
+        'triceps',
+        'bench dip',
+        'kickback',
+      ],
+      'Legs': ['squat', 'leg ', 'lunge', 'calf', 'step-up', 'hamstring'],
+      'Abs': [
+        'crunch',
+        'plank',
+        'twist',
+        'ab wheel',
+        'dead bug',
+        'mountain climber',
+      ],
+      'Glutes': [
+        'hip thrust',
+        'glute',
+        'kickback',
+        'hip abduction',
+        'lateral walk',
+      ],
+    };
+    return (exerciseAliases[selectedCategory] ?? const <String>[]).any(
+      name.contains,
+    );
   }
 }

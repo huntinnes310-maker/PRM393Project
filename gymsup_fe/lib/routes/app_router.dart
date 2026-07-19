@@ -7,6 +7,8 @@ import '../presentation/screens/exercise/exercise_list_screen.dart';
 import '../presentation/screens/exercise/exercise_detail_screen.dart';
 import '../presentation/screens/profile/survey_screen.dart';
 import '../presentation/screens/manager/manager_dashboard_screen.dart';
+import '../presentation/screens/subscription/subscription_screen.dart';
+import '../presentation/screens/subscription/checkout_screen.dart';
 
 class AppRouter {
   static GoRouter createRouter(AuthProvider authProvider) {
@@ -87,6 +89,16 @@ class AppRouter {
           path: '/manager/dashboard',
           name: 'manager_dashboard',
           builder: (context, state) => const ManagerDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/subscription',
+          name: 'subscription',
+          builder: (context, state) => const SubscriptionScreen(),
+        ),
+        GoRoute(
+          path: '/subscription/checkout',
+          name: 'checkout',
+          builder: (context, state) => const CheckoutScreen(),
         ),
       ],
     );

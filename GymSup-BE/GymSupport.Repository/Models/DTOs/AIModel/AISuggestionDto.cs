@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -33,5 +33,13 @@ namespace GymSupport.Repository.Models.DTOs.AIModel
         public string Reps { get; set; } = "";
 
         public string Notes { get; set; } = "";
+
+        // Meal suggestions properties
+        public string MealType { get; set; } = "";
+        public string MealName { get; set; } = "";
+        public int Calories { get; set; }
+        public int Protein { get; set; }
+        public int Carbs { get; set; }
+        public int Fat { get; set; }
     }
 }

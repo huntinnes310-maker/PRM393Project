@@ -129,6 +129,13 @@ builder.Services.AddScoped<IMealPlanRepository, MealPlanRepository>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IStorePurchaseService, StorePurchaseService>();
 builder.Services.AddScoped<PremiumOnlyFilter>();
+builder.Services.AddSingleton(sp => {
+    var config = sp.GetRequiredService<IConfiguration>();
+    var clientId = config["PayOS:ClientId"] ?? throw new InvalidOperationException("PayOS ClientId is missing.");
+    var apiKey = config["PayOS:ApiKey"] ?? throw new InvalidOperationException("PayOS ApiKey is missing.");
+    var checksumKey = config["PayOS:ChecksumKey"] ?? throw new InvalidOperationException("PayOS ChecksumKey is missing.");
+    return new PayOS.PayOSClient(clientId, apiKey, checksumKey);
+});
 
 
 
@@ -145,6 +152,64 @@ using (var scope = app.Services.CreateScope())
         var dbContext = scope.ServiceProvider.GetRequiredService<MongoDbContext>();
         var exerciseCollection = dbContext.GetCollection<Exercise>("Exercises");
         var muscleCollection = dbContext.GetCollection<Muscle>("Muscles");
+
+        // --- Database Migration: Seed/Update Subscription Plans ---
+        var planCollection = dbContext.GetCollection<SubscriptionPlan>("SubscriptionPlans");
+        
+        // 1. Rename existing premium_monthly or Premium Monthly or hội viên tháng, and set price to 5000
+        var monthlyFilter = Builders<SubscriptionPlan>.Filter.Or(
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "premium_monthly"),
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "Premium Monthly"),
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "hội viên tháng")
+        );
+        var monthlyPlan = await planCollection.Find(monthlyFilter).FirstOrDefaultAsync();
+        if (monthlyPlan != null)
+        {
+            monthlyPlan.Name = "hội viên tháng";
+            monthlyPlan.Price = 5000;
+            await planCollection.ReplaceOneAsync(p => p.Id == monthlyPlan.Id, monthlyPlan);
+            Console.WriteLine("--> Database Migration: Updated monthly plan to 'hội viên tháng' and price to 5000");
+        }
+        
+        // 2. Rename existing premium_yearly or Premium Yearly or hội viên năm, and set price to 10000
+        var yearlyFilter = Builders<SubscriptionPlan>.Filter.Or(
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "premium_yearly"),
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "Premium Yearly"),
+            Builders<SubscriptionPlan>.Filter.Eq(p => p.Name, "hội viên năm")
+        );
+        var yearlyPlan = await planCollection.Find(yearlyFilter).FirstOrDefaultAsync();
+        if (yearlyPlan != null)
+        {
+            yearlyPlan.Name = "hội viên năm";
+            yearlyPlan.Price = 10000;
+            await planCollection.ReplaceOneAsync(p => p.Id == yearlyPlan.Id, yearlyPlan);
+            Console.WriteLine("--> Database Migration: Updated yearly plan to 'hội viên năm' and price to 10000");
+        }
+
+        var existingPlans = await planCollection.Find(_ => true).ToListAsync();
+        if (existingPlans.Count == 0)
+        {
+            Console.WriteLine("--> Seeding Subscription Plans...");
+            var monthly = new SubscriptionPlan
+            {
+                Name = "hội viên tháng",
+                DurationMonths = 1,
+                Price = 5000,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            var yearly = new SubscriptionPlan
+            {
+                Name = "hội viên năm",
+                DurationMonths = 12,
+                Price = 10000,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            await planCollection.InsertOneAsync(monthly);
+            await planCollection.InsertOneAsync(yearly);
+            Console.WriteLine("--> Successfully seeded 'hội viên tháng' and 'hội viên năm'!");
+        }
 
         // Lấy danh sách muscles để map ID
         var muscles = await muscleCollection.Find(_ => true).ToListAsync();

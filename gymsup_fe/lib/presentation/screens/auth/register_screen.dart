@@ -16,13 +16,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
     _fullNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -40,7 +43,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đăng ký thành công! Vui lòng kiểm tra email để xác thực.'),
+            content: Text(
+              'Đăng ký thành công! Vui lòng kiểm tra email để xác thực.',
+            ),
             backgroundColor: AppColors.success,
             duration: Duration(seconds: 3),
           ),
@@ -95,7 +100,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   controller: _fullNameController,
                   decoration: const InputDecoration(
                     labelText: 'Họ và tên',
-                    prefixIcon: Icon(Icons.person_outlined, color: AppColors.textSecondary),
+                    prefixIcon: Icon(
+                      Icons.person_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Vui lòng nhập họ tên';
@@ -109,7 +117,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined, color: AppColors.textSecondary),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Vui lòng nhập email';
@@ -124,18 +135,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     labelText: 'Mật khẩu',
-                    prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textSecondary),
+                    prefixIcon: const Icon(
+                      Icons.lock_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                         color: AppColors.textSecondary,
                       ),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Vui lòng nhập mật khẩu';
                     if (v.length < 6) return 'Mật khẩu ít nhất 6 ký tự';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscureConfirmPassword,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) {
+                    if (!authProvider.isLoading) _handleRegister();
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Nhập lại mật khẩu',
+                    prefixIcon: const Icon(
+                      Icons.lock_reset_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      tooltip: _obscureConfirmPassword
+                          ? 'Hiện mật khẩu'
+                          : 'Ẩn mật khẩu',
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
+                    ),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Vui lòng nhập lại mật khẩu';
+                    }
+                    if (v != _passwordController.text) {
+                      return 'Mật khẩu nhập lại không khớp';
+                    }
                     return null;
                   },
                 ),
@@ -146,7 +203,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Text('Tạo tài khoản'),
                 ),
@@ -164,7 +224,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onPressed: () => context.go('/login'),
                       child: const Text(
                         'Đăng nhập',
-                        style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],

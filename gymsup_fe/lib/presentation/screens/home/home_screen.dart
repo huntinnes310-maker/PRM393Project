@@ -4,6 +4,7 @@ import 'package:percent_indicator/percent_indicator.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/home_provider.dart';
 import '../../../providers/profile_provider.dart';
+import '../../../providers/payment_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/home_data.dart';
 import '../exercise/exercise_list_screen.dart';
@@ -11,6 +12,9 @@ import '../profile/profile_screen.dart';
 import '../todo/todo_screen.dart';
 import '../ai/ai_chat_screen.dart';
 import '../nutrition/nutrition_detail_screen.dart';
+import '../subscription/subscription_screen.dart';
+import '../../widgets/common/app_card.dart';
+import '../../widgets/common/section_header.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,10 +38,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = context.read<AuthProvider>();
     final homeProvider = context.read<HomeProvider>();
     final profileProvider = context.read<ProfileProvider>();
+    final paymentProvider = context.read<PaymentProvider>();
 
     if (authProvider.userId != null) {
       homeProvider.fetchHomeData(authProvider.userId!);
       profileProvider.fetchProfile(authProvider.userId!);
+      paymentProvider.fetchMySubscription();
     }
 
     // Hiện thông báo chào mừng nếu vừa đăng nhập
@@ -58,14 +64,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = context.watch<AuthProvider>();
     final homeProvider = context.watch<HomeProvider>();
     final profileProvider = context.watch<ProfileProvider>();
+    final paymentProvider = context.watch<PaymentProvider>();
 
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          _buildDashboardTab(authProvider, homeProvider, profileProvider),
+          _buildDashboardTab(
+            authProvider,
+            homeProvider,
+            profileProvider,
+            paymentProvider,
+          ),
           const ExerciseListScreen(),
-          const TodoScreen(),
           const AiChatScreen(),
           const ProfileScreen(),
         ],
@@ -84,31 +95,29 @@ class _HomeScreenState extends State<HomeScreen> {
             });
           },
           type: BottomNavigationBarType.fixed,
-          backgroundColor: AppColors.cardBackground,
+          backgroundColor: AppColors.surface,
           selectedItemColor: AppColors.primary,
           unselectedItemColor: AppColors.textSecondary,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+          unselectedLabelStyle: const TextStyle(fontSize: 12),
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home_rounded),
               label: 'Trang chủ',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.fitness_center_outlined),
               activeIcon: Icon(Icons.fitness_center),
-              label: 'Bài tập',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.check_box_outlined),
-              activeIcon: Icon(Icons.check_box),
-              label: 'Lịch tập',
+              label: 'Tập luyện',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.chat_bubble_outline),
               activeIcon: Icon(Icons.chat_bubble),
-              label: 'Hỏi AI',
+              label: 'AI Coach',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
@@ -122,126 +131,346 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDashboardTab(
-      AuthProvider authProvider,
-      HomeProvider homeProvider,
-      ProfileProvider profileProvider) {
+    AuthProvider authProvider,
+    HomeProvider homeProvider,
+    ProfileProvider profileProvider,
+    PaymentProvider paymentProvider,
+  ) {
+    final subscription = paymentProvider.mySubscription;
+    final normalizedPlanName =
+        subscription?.planName.trim().toLowerCase() ?? '';
+    final showVipBadge =
+        subscription != null &&
+        subscription.status.toLowerCase() == 'active' &&
+        (normalizedPlanName == 'hội viên tháng' ||
+            normalizedPlanName == 'hội viên năm');
+
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 76,
         title: Row(
           children: [
-            const CircleAvatar(
-              backgroundColor: AppColors.surfaceVariant,
-              child: Icon(Icons.person, color: AppColors.primary),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.fitness_center_rounded,
+                color: AppColors.primary,
+                size: 21,
+              ),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Xin chào!',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Chào buổi tập,',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-                Text(
-                  profileProvider.profile?.fullName.isNotEmpty == true
-                      ? profileProvider.profile!.fullName
-                      : (authProvider.userId != null ? 'Gymer' : 'GymSup Member'),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          profileProvider.profile?.fullName.isNotEmpty == true
+                              ? profileProvider.profile!.fullName
+                              : (authProvider.userId != null
+                                    ? 'Gymer'
+                                    : 'GymSup Member'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                        ),
+                      ),
+                      if (showVipBadge) ...[
+                        const SizedBox(width: 8),
+                        _buildVipBadge(),
+                      ],
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: AppColors.error),
-            onPressed: () => authProvider.logout(),
-          ),
-        ],
       ),
       body: homeProvider.isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             )
           : homeProvider.errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 60),
-                        const SizedBox(height: 16),
-                        Text(
-                          homeProvider.errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 16),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadData,
-                          child: const Text('Thử lại'),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: AppColors.error,
+                      size: 60,
                     ),
-                  ),
-                )
-              : homeProvider.homeData == null
-                  ? const Center(
-                      child: Text('Không có dữ liệu hiển thị.'),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: () async => _loadData(),
-                      color: AppColors.primary,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // 1. Streak & Activity Banner
-                            _buildActivitySection(homeProvider.homeData!),
-                            const SizedBox(height: 24),
-
-                            // 2. Nutrition Progress Section
-                            _buildSectionTitle('Dinh dưỡng hôm nay 🍎'),
-                            const SizedBox(height: 12),
-                            _buildNutritionCard(homeProvider.homeData!.nutrition),
-                            const SizedBox(height: 24),
-
-                            // 3. Today's Workout Section
-                            _buildSectionTitle('Lịch tập hôm nay 🏋️'),
-                            const SizedBox(height: 12),
-                            _buildTodayPlanCard(homeProvider.homeData!.todayPlan, homeProvider.homeData!.plans),
-                            const SizedBox(height: 24),
-
-                            // 4. RPG Muscle Levels Progress
-                            _buildSectionTitle('Tiến trình cơ bắp (RPG Level) 🧬'),
-                            const SizedBox(height: 12),
-                            _buildMuscleProgressList(homeProvider.homeData!.muscleProgress),
-                          ],
-                        ),
+                    const SizedBox(height: 16),
+                    Text(
+                      homeProvider.errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 16,
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadData,
+                      child: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : homeProvider.homeData == null
+          ? const Center(child: Text('Không có dữ liệu hiển thị.'))
+          : RefreshIndicator(
+              onRefresh: () async => _loadData(),
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Streak & Activity Banner
+                    _buildActivitySection(homeProvider.homeData!),
+                    const SizedBox(height: 20),
+
+                    _buildQuickActions(),
+                    const SizedBox(height: 28),
+
+                    // 2. Nutrition Progress Section
+                    _buildSectionTitle('Dinh dưỡng hôm nay'),
+                    const SizedBox(height: 12),
+                    _buildNutritionCard(homeProvider.homeData!.nutrition),
+                    const SizedBox(height: 24),
+
+                    // 3. Today's Workout Section
+                    _buildSectionTitle('Kế hoạch hôm nay'),
+                    const SizedBox(height: 12),
+                    _buildTodayPlanCard(
+                      homeProvider.homeData!.todayPlan,
+                      homeProvider.homeData!.plans,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // 4. RPG Muscle Levels Progress
+                    _buildSectionTitle('Tiến trình cơ bắp'),
+                    const SizedBox(height: 12),
+                    _buildMuscleProgressList(
+                      homeProvider.homeData!.muscleProgress,
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 
+  Widget _buildVipBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFB347), Color(0xFFFF6B35)],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.workspace_premium_rounded, size: 12, color: Colors.white),
+          SizedBox(width: 3),
+          Text(
+            'VIP',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: AppColors.textPrimary,
+    return SectionHeader(title: title);
+  }
+
+  void _openScreen(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Widget _buildQuickActions() {
+    final actions = [
+      (
+        Icons.event_note_rounded,
+        'Lịch tập',
+        'Kế hoạch hôm nay',
+        const Color(0xFF8290FF),
+        () => _openScreen(const TodoScreen()),
+      ),
+      (
+        Icons.restaurant_rounded,
+        'Dinh dưỡng',
+        'Theo dõi mục tiêu',
+        const Color(0xFF58C996),
+        () => _openScreen(const NutritionDetailScreen()),
+      ),
+      (
+        Icons.workspace_premium_rounded,
+        'Hội viên',
+        'Đặc quyền GymSup',
+        const Color(0xFFE4C46C),
+        () => _openScreen(const SubscriptionScreen()),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(title: 'Truy cập nhanh'),
+        const SizedBox(height: 12),
+        Row(
+          children: actions.map((action) {
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: action == actions.last ? 0 : 10,
+                ),
+                child: _buildQuickActionCard(
+                  icon: action.$1,
+                  title: action.$2,
+                  subtitle: action.$3,
+                  accent: action.$4,
+                  onTap: action.$5,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color accent,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        hoverColor: accent.withValues(alpha: 0.04),
+        splashColor: accent.withValues(alpha: 0.1),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                accent.withValues(alpha: 0.085),
+                AppColors.cardBackground,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: accent.withValues(alpha: 0.24)),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.045),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: accent.withValues(alpha: 0.16)),
+                    ),
+                    child: Icon(icon, color: accent, size: 22),
+                  ),
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.035),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.arrow_outward_rounded,
+                      color: accent.withValues(alpha: 0.85),
+                      size: 16,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -250,74 +479,66 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActivitySection(HomeData data) {
     return Row(
       children: [
-        // Streak Card
         Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.surfaceVariant),
-            ),
+          child: AppCard(
             child: Row(
               children: [
-                const Text('🔥', style: TextStyle(fontSize: 32)),
+                _buildMetricIcon(Icons.local_fire_department_rounded),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${data.streak} ngày',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const Text(
-                      'Chuỗi ngày tập',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                  ],
+                Expanded(
+                  child: _buildMetricText('${data.streak} ngày', 'Chuỗi tập'),
                 ),
               ],
             ),
           ),
         ),
         const SizedBox(width: 12),
-        // Workout Count Card
         Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.surfaceVariant),
-            ),
+          child: AppCard(
             child: Row(
               children: [
-                const Text('💪', style: TextStyle(fontSize: 32)),
+                _buildMetricIcon(Icons.bolt_rounded),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${data.workoutCount} buổi',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const Text(
-                      'Đã hoàn thành',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                  ],
+                Expanded(
+                  child: _buildMetricText(
+                    '${data.workoutCount} buổi',
+                    'Hoàn thành',
+                  ),
                 ),
               ],
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricIcon(IconData icon) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: AppColors.primary, size: 21),
+    );
+  }
+
+  Widget _buildMetricText(String value, String label) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
       ],
     );
@@ -329,7 +550,9 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const NutritionDetailScreen()),
+          MaterialPageRoute(
+            builder: (context) => const NutritionDetailScreen(),
+          ),
         );
       },
       child: Container(
@@ -420,18 +643,28 @@ class _HomeScreenState extends State<HomeScreen> {
         orElse: () => plans.isNotEmpty ? plans.first : null,
       );
 
-      final sessions = activePlan != null ? (activePlan['sessions'] as List? ?? []) : [];
+      final sessions = activePlan != null
+          ? (activePlan['sessions'] as List? ?? [])
+          : [];
 
       String translateDay(String d) {
         switch (d.toLowerCase()) {
-          case 'monday': return 'Thứ 2';
-          case 'tuesday': return 'Thứ 3';
-          case 'wednesday': return 'Thứ 4';
-          case 'thursday': return 'Thứ 5';
-          case 'friday': return 'Thứ 6';
-          case 'saturday': return 'Thứ 7';
-          case 'sunday': return 'Chủ nhật';
-          default: return d;
+          case 'monday':
+            return 'Thứ 2';
+          case 'tuesday':
+            return 'Thứ 3';
+          case 'wednesday':
+            return 'Thứ 4';
+          case 'thursday':
+            return 'Thứ 5';
+          case 'friday':
+            return 'Thứ 6';
+          case 'saturday':
+            return 'Thứ 7';
+          case 'sunday':
+            return 'Chủ nhật';
+          default:
+            return d;
         }
       }
 
@@ -465,7 +698,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Lịch tập của bạn tuần này (${activePlan!['name']}):',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -474,20 +711,31 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle_outline, size: 16, color: AppColors.primary),
+                      const Icon(
+                        Icons.check_circle_outline,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '${translateDay(s['dayOfWeek'] ?? '')}: ',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                       Text(
                         s['focus'] ?? 'Tập luyện',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ],
         ),
@@ -536,14 +784,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
-                    setState(() {
-                      _currentIndex = 2; // Chuyển sang tab Lịch tập
-                    });
+                    _openScreen(const TodoScreen());
                   },
                   icon: const Icon(Icons.play_arrow, size: 18),
                   label: const Text('Bắt đầu'),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     minimumSize: Size.zero,
                   ),
                 ),
@@ -563,14 +812,15 @@ class _HomeScreenState extends State<HomeScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: plan.exercises.length,
-              separatorBuilder: (context, index) => const Divider(
-                height: 1,
-                color: AppColors.surfaceVariant,
-              ),
+              separatorBuilder: (context, index) =>
+                  const Divider(height: 1, color: AppColors.surfaceVariant),
               itemBuilder: (context, index) {
                 final ex = plan.exercises[index];
                 return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   leading: Container(
                     width: 50,
                     height: 50,
@@ -585,25 +835,38 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ? Image.asset(
                                     ex.displayImageUrl,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        const Icon(Icons.fitness_center, color: AppColors.primary),
+                                    errorBuilder: (_, _, _) => const Icon(
+                                      Icons.fitness_center,
+                                      color: AppColors.primary,
+                                    ),
                                   )
                                 : Image.network(
                                     ex.displayImageUrl,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        const Icon(Icons.fitness_center, color: AppColors.primary),
+                                    errorBuilder: (_, _, _) => const Icon(
+                                      Icons.fitness_center,
+                                      color: AppColors.primary,
+                                    ),
                                   ),
                           )
-                        : const Icon(Icons.fitness_center, color: AppColors.primary),
+                        : const Icon(
+                            Icons.fitness_center,
+                            color: AppColors.primary,
+                          ),
                   ),
                   title: Text(
                     ex.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                   subtitle: Text(
                     'Nhóm cơ: ${ex.muscle}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                   trailing: Text(
                     '${ex.sets ?? 0} Sets x ${ex.reps ?? "—"} Reps',
@@ -624,7 +887,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // 4. RPG Muscle Progress
   Widget _buildMuscleProgressList(List<MuscleProgress> progressList) {
     if (progressList.isEmpty) {
-      return const Center(child: Text('Chưa có tiến trình cơ bắp nào ghi nhận.'));
+      return const Center(
+        child: Text('Chưa có tiến trình cơ bắp nào ghi nhận.'),
+      );
     }
 
     // Sắp xếp danh sách giảm dần theo Cấp độ và Tổng điểm kinh nghiệm (XP)
@@ -663,16 +928,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         mp.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       // Tier badge
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: _getTierColor(mp.tier).withOpacity(0.15),
+                          color: _getTierColor(mp.tier).withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: _getTierColor(mp.tier), width: 0.5),
+                          border: Border.all(
+                            color: _getTierColor(mp.tier),
+                            width: 0.5,
+                          ),
                         ),
                         child: Text(
                           mp.tier,

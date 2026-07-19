@@ -1,3 +1,4 @@
+using GymCoach.Api.Config;
 using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.AIModel;
 using GymSupport.Repository.Models.Entities;
@@ -8,6 +9,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using MongoDB.Driver;
 
 namespace GymSupport.Service.Services;
 
@@ -20,6 +22,7 @@ public class OpenAIService : IAIService
     private readonly IExerciseRepository _exerciseRepository;
     private readonly ICustomerRepository _customerRepository;
     private readonly IUserRepository _userRepository;
+    private readonly MongoDbContext _mongoContext;
 
     public OpenAIService(
      HttpClient httpClient,
@@ -28,7 +31,8 @@ public class OpenAIService : IAIService
      IWorkoutPlanRepository workoutRepository,
      IExerciseRepository exerciseRepository,
      ICustomerRepository customerRepository,
-     IUserRepository userRepository)
+     IUserRepository userRepository,
+     MongoDbContext mongoContext)
     {
         _httpClient = httpClient;
         _configuration = configuration;
@@ -37,6 +41,7 @@ public class OpenAIService : IAIService
         _exerciseRepository = exerciseRepository;
         _customerRepository = customerRepository;
         _userRepository = userRepository;
+        _mongoContext = mongoContext;
     }
 
     public async Task ApplySuggestionsAsync(ApplySuggestionsRequestDto dto)
@@ -183,6 +188,51 @@ public class OpenAIService : IAIService
                         rSession.Exercises.Remove(exToRemove); // Xóa khỏi danh sách
                         await _workoutRepository.UpdateAsync(rPlan); // Cập nhật lại vào MongoDB
                     }
+                    break;
+
+                case "add_meal":
+                    if (string.IsNullOrEmpty(suggestion.MealName) || suggestion.Calories <= 0) break;
+
+                    var mealCollection = _mongoContext.GetCollection<MealPlan>("MealPlans");
+                    var startOfDay = DateTime.UtcNow.Date;
+                    var endOfDay = startOfDay.AddDays(1).AddTicks(-1);
+
+                    var mealPlan = await mealCollection
+                        .Find(x => x.UserId == dto.UserId && x.Date >= startOfDay && x.Date <= endOfDay)
+                        .FirstOrDefaultAsync();
+
+                    if (mealPlan == null)
+                    {
+                        mealPlan = new MealPlan
+                        {
+                            Id = MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                            UserId = dto.UserId,
+                            Date = startOfDay,
+                            TotalCalories = 0,
+                            Protein = 0,
+                            Carbs = 0,
+                            Fat = 0,
+                            WaterLiters = 0.0,
+                            Meals = new List<MealItem>()
+                        };
+                    }
+
+                    mealPlan.TotalCalories += suggestion.Calories;
+                    mealPlan.Protein += suggestion.Protein;
+                    mealPlan.Carbs += suggestion.Carbs;
+                    mealPlan.Fat += suggestion.Fat;
+
+                    mealPlan.Meals.Add(new MealItem
+                    {
+                        Type = string.IsNullOrWhiteSpace(suggestion.MealType) ? "Snack" : suggestion.MealType,
+                        Name = suggestion.MealName,
+                        Calories = suggestion.Calories
+                    });
+
+                    await mealCollection.ReplaceOneAsync(
+                        x => x.UserId == mealPlan.UserId && x.Date >= startOfDay && x.Date <= endOfDay,
+                        mealPlan,
+                        new ReplaceOptions { IsUpsert = true });
                     break;
 
                 default:
@@ -500,7 +550,7 @@ PHONG CÁCH TRÒ CHUYỆN:
 - Có thể chào hỏi, pha chút hài hước phù hợp, động viên, hỏi thăm và tán gẫu tự nhiên. Hãy bắt nhịp cách xưng hô, độ dài và năng lượng của người dùng.
 - Không ép mọi cuộc trò chuyện quay về gym. Với câu hỏi đời thường, hãy trả lời hữu ích trong khả năng của mình; nếu không chắc, nói rõ thay vì bịa.
 - Khi người dùng chỉ trò chuyện, hỏi kiến thức hoặc xin gợi ý, luôn trả `suggestions: []`; tuyệt đối không tác động database.
-- Chỉ sinh `suggestions` khi người dùng xác nhận rõ ràng rằng họ muốn lưu/áp dụng thay đổi lịch tập vào hệ thống. Việc lưu sẽ được hệ thống kiểm tra quyền Premium riêng.
+- Chỉ sinh `suggestions` khi người dùng xác nhận rõ ràng rằng họ muốn lưu/áp dụng thay đổi lịch tập hoặc ghi nhận món ăn/bữa ăn vào hệ thống. Việc lưu sẽ được hệ thống kiểm tra quyền Premium riêng.
 - Không chẩn đoán bệnh hoặc thay thế bác sĩ. Khi có dấu hiệu nguy hiểm, đau nặng hay kéo dài, khuyên người dùng gặp chuyên gia y tế.
 
 =========================================
@@ -525,6 +575,18 @@ Khi người dùng yêu cầu xóa một bài tập (Ví dụ: "Xóa bài Bench 
    --> TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý chọn một buổi để xóa, cũng KHÔNG ĐƯỢC tự ý xóa hết. Mảng `suggestions` bắt buộc phải để rỗng `[]`.
    --> Bạn phải đưa câu hỏi xác nhận rõ ràng ở trường `response`: "Dạ, em thấy bài [Tên bài] đang có mặt ở cả lịch tập [Thứ A] và [Thứ B]. Anh/Chị muốn xóa bài này ở riêng một buổi cụ thể nào hay muốn xóa hoàn toàn khỏi tất cả các buổi ạ?"
    --> CHỈ KHI NÀO người dùng phản hồi rõ ràng (Ví dụ: "Xóa ở Thứ 2 thôi" hoặc "Xóa hết đi em") thì ở lượt chat kế tiếp bạn mới được sinh hành động 'remove_exercise' tương ứng với lựa chọn của họ.
+
+-----------------------------------------
+HÀNH ĐỘNG 3: THÊM BỮA ĂN MỚI (ADD MEAL)
+Khi người dùng nói muốn thêm hoặc ghi nhận một món ăn/bữa ăn (Ví dụ: "Sáng nay anh ăn 2 quả trứng và 1 quả chuối" hoặc "Ghi nhận giúp anh bữa trưa ăn 200g ức gà + 1 bát cơm"):
+1. Bạn PHẢI tự động nhận diện và tính toán/ước lượng các chỉ số dinh dưỡng cho bữa ăn đó:
+   - `mealType`: "Breakfast" (nếu ăn buổi sáng/bữa sáng), "Lunch" (buổi trưa/bữa trưa), "Dinner" (buổi tối/bữa tối), "Snack" (nếu là bữa nhẹ/bữa xế hoặc không nói rõ bữa nào).
+   - `mealName`: Tên các món ăn kết hợp lại (Ví dụ: "2 Trứng ốp + 1 Chuối" hoặc "200g Ức gà + 1 Bát cơm").
+   - `calories`: Tổng lượng calo ước tính của bữa ăn (số nguyên, ví dụ: 350).
+   - `protein`: Tổng lượng protein ước tính bằng gram (số nguyên, ví dụ: 25).
+   - `carbs`: Tổng lượng carbohydrate ước tính bằng gram (số nguyên, ví dụ: 40).
+   - `fat`: Tổng lượng chất béo ước tính bằng gram (số nguyên, ví dụ: 12).
+2. Khi người dùng xác nhận muốn lưu hoặc yêu cầu ghi nhận, hãy sinh hành động `add_meal` vào mảng `suggestions` với các giá trị đã ước lượng.
 =========================================
 QUY TẮC ĐỒNG BỘ NGÔN NGỮ NGÀY THÁNG (BẮT BUỘC):
 - Dữ liệu hệ thống lưu tên thứ bằng tiếng Anh: "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday".
@@ -661,7 +723,7 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
                                     type = "object",
                                     properties = new
                                     {
-                                        action = new { type = "string", description = "Tên hành động tác động DB." },
+                                        action = new { type = "string", description = "Tên hành động tác động DB. Dùng create_plan, create_session, add_exercise, remove_exercise, update_exercise hoặc add_meal." },
                                         planId = new { type = "string", description = "Mã ID thật của Plan lấy từ database hoặc {planId}." },
                                         sessionId = new { type = "string", description = "Mã ID thật của Session lấy từ database hoặc dạng {sessionId_Day}." },
                                         exerciseId = new { type = "string", description = "Mã ID thật của bài tập lấy từ database." },
@@ -673,9 +735,19 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
                                         focus = new { type = "string", description = "Nhóm cơ tiêu điểm của buổi tập." },
                                         sets = new { type = "integer", description = "Số sets tập." },
                                         reps = new { type = "string", description = "Số reps tập." },
-                                        notes = new { type = "string", description = "Ghi chú thêm." }
+                                        notes = new { type = "string", description = "Ghi chú thêm." },
+                                        mealType = new { type = "string", description = "Loại bữa ăn: Breakfast, Lunch, Dinner hoặc Snack." },
+                                        mealName = new { type = "string", description = "Tên món ăn." },
+                                        calories = new { type = "integer", description = "Lượng calo." },
+                                        protein = new { type = "integer", description = "Lượng đạm gram." },
+                                        carbs = new { type = "integer", description = "Lượng carb gram." },
+                                        fat = new { type = "integer", description = "Lượng béo gram." }
                                     },
-                                    required = new[] { "action", "planId", "sessionId", "exerciseId", "planName", "goal", "planDescription", "daysPerWeek", "dayOfWeek", "focus", "sets", "reps", "notes" },
+                                    required = new[] { 
+                                        "action", "planId", "sessionId", "exerciseId", "planName", "goal", 
+                                        "planDescription", "daysPerWeek", "dayOfWeek", "focus", "sets", "reps", "notes",
+                                        "mealType", "mealName", "calories", "protein", "carbs", "fat"
+                                    },
                                     additionalProperties = false
                                 }
                             }
