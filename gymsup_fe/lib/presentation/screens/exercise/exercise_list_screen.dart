@@ -4,9 +4,15 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/exercise_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/muscle.dart';
+import '../../../data/models/exercise.dart';
 
 class ExerciseListScreen extends StatefulWidget {
-  const ExerciseListScreen({super.key});
+  /// Khi true, màn hình hoạt động như 1 bộ chọn bài tập: chạm vào 1 item sẽ
+  /// gọi [onPick] thay vì điều hướng sang màn chi tiết.
+  final bool pickerMode;
+  final void Function(Exercise exercise)? onPick;
+
+  const ExerciseListScreen({super.key, this.pickerMode = false, this.onPick});
 
   @override
   State<ExerciseListScreen> createState() => _ExerciseListScreenState();
@@ -16,36 +22,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedCategory = 'All';
-
-  // Nhóm cơ tiếng Việt tương ứng cho giao diện
-  final Map<String, String> _categories = {
-    'All': 'Tất cả',
-    'Chest': 'Ngực',
-    'Back': 'Lưng',
-    'Shoulders': 'Vai',
-    'Biceps': 'Tay trước',
-    'Triceps': 'Tay sau',
-    'Legs': 'Chân',
-    'Abs': 'Bụng',
-    'Glutes': 'Mông',
-  };
-
-  static const Map<String, List<String>> _categoryAliases = {
-    'Chest': ['chest', 'ngực'],
-    'Back': ['back', 'lưng', 'latissimus', 'rhomboid', 'trapezius'],
-    'Shoulders': ['shoulder', 'deltoid', 'vai', 'rotator cuff'],
-    'Biceps': ['biceps', 'tay trước', 'nhị đầu', 'brachialis'],
-    'Triceps': [
-      'triceps',
-      'tay sau',
-      'long head',
-      'lateral head',
-      'medial head',
-    ],
-    'Legs': ['legs', 'chân', 'quadriceps', 'hamstring', 'calves', 'adductor'],
-    'Abs': ['abs', 'core', 'bụng', 'oblique', 'abdominis'],
-    'Glutes': ['glute', 'mông'],
-  };
+  final Set<String> _selectedMuscleIds = {};
 
   @override
   void initState() {
@@ -82,26 +59,17 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
 
       bool categoryMatches = true;
       if (_selectedCategory != 'All') {
-        categoryMatches = exercise.muscleImpacts.any((impact) {
-          Muscle? matchedMuscle;
-          for (final muscle in exerciseProvider.muscles) {
-            if (muscle.id == impact.muscleId) {
-              matchedMuscle = muscle;
-              break;
-            }
-          }
+        final categoryMuscleIds = exerciseProvider.muscles
+            .where((m) => m.category.toLowerCase() == _selectedCategory.toLowerCase())
+            .map((m) => m.id)
+            .toSet();
+        categoryMatches =
+            exercise.muscleImpacts.any((impact) => categoryMuscleIds.contains(impact.muscleId));
 
-          return matchedMuscle != null &&
-              _muscleMatchesCategory(matchedMuscle, _selectedCategory);
-        });
-
-        // Trong khoảnh khắc danh sách muscle chưa tải xong, vẫn có thể lọc
-        // bằng tên bài tập thay vì hiển thị danh sách rỗng sai lệch.
-        if (!categoryMatches && exerciseProvider.muscles.isEmpty) {
-          categoryMatches = _exerciseNameMatchesCategory(
-            exercise.name,
-            _selectedCategory,
-          );
+        // Đã chọn thêm cơ nhỏ cụ thể bên trong cơ lớn -> thu hẹp thêm.
+        if (categoryMatches && _selectedMuscleIds.isNotEmpty) {
+          categoryMatches = exercise.muscleImpacts
+              .any((impact) => _selectedMuscleIds.contains(impact.muscleId));
         }
       }
 
@@ -110,9 +78,9 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Thư Viện Bài Tập',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        title: Text(
+          widget.pickerMode ? 'Chọn bài tập' : 'Thư Viện Bài Tập',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
       ),
       body: Column(
@@ -175,16 +143,17 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: _categories.entries.map((entry) {
-                final isSelected = _selectedCategory == entry.key;
+              children: ['All', ...exerciseProvider.categories].map((category) {
+                final isSelected = _selectedCategory == category;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8.0),
                   child: FilterChip(
-                    label: Text(entry.value),
+                    label: Text(category == 'All' ? 'Tất cả' : category),
                     selected: isSelected,
                     onSelected: (selected) {
                       setState(() {
-                        _selectedCategory = entry.key;
+                        _selectedCategory = category;
+                        _selectedMuscleIds.clear();
                       });
                     },
                     selectedColor: AppColors.primary.withValues(alpha: 0.2),
@@ -212,6 +181,11 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
               }).toList(),
             ),
           ),
+
+          // 2b. Cơ nhỏ bên trong cơ lớn đã chọn (multi-select, tuỳ chỉnh)
+          if (_selectedCategory != 'All')
+            _buildMuscleSubFilter(exerciseProvider),
+
           const SizedBox(height: 12),
 
           // 3. Exercises List
@@ -280,7 +254,11 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: () {
-                            context.push('/exercises/${ex.id}');
+                            if (widget.pickerMode) {
+                              widget.onPick?.call(ex);
+                            } else {
+                              context.push('/exercises/${ex.id}');
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
@@ -403,6 +381,58 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     );
   }
 
+  Widget _buildMuscleSubFilter(ExerciseProvider exerciseProvider) {
+    final musclesInCategory = exerciseProvider.muscles
+        .where((m) => m.category.toLowerCase() == _selectedCategory.toLowerCase())
+        .toList();
+    if (musclesInCategory.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: SizedBox(
+        height: 34,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          children: musclesInCategory.map((muscle) {
+            final isSelected = _selectedMuscleIds.contains(muscle.id);
+            return Padding(
+              padding: const EdgeInsets.only(right: 6.0),
+              child: FilterChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(muscle.name, style: const TextStyle(fontSize: 11)),
+                selected: isSelected,
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedMuscleIds.add(muscle.id);
+                    } else {
+                      _selectedMuscleIds.remove(muscle.id);
+                    }
+                  });
+                },
+                selectedColor: AppColors.primaryLight.withValues(alpha: 0.2),
+                checkmarkColor: AppColors.primary,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppColors.primary : AppColors.textHint,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+                backgroundColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                    width: isSelected ? 1 : 0.5,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDifficultyBadge(String difficulty) {
     Color color;
     switch (difficulty.toLowerCase()) {
@@ -437,63 +467,4 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     );
   }
 
-  bool _muscleMatchesCategory(Muscle muscle, String selectedCategory) {
-    final aliases = _categoryAliases[selectedCategory] ?? const <String>[];
-    final searchable = '${muscle.category} ${muscle.name}'.toLowerCase();
-    return aliases.any(searchable.contains);
-  }
-
-  bool _exerciseNameMatchesCategory(
-    String exerciseName,
-    String selectedCategory,
-  ) {
-    final name = exerciseName.toLowerCase();
-    const exerciseAliases = <String, List<String>>{
-      'Chest': ['bench press', 'chest press', 'fly', 'crossover', 'pec deck'],
-      'Back': [
-        'row',
-        'pull-up',
-        'pulldown',
-        'deadlift',
-        'rack pull',
-        'back extension',
-      ],
-      'Shoulders': [
-        'shoulder press',
-        'overhead press',
-        'lateral raise',
-        'front raise',
-        'rear delt',
-        'face pull',
-        'arnold press',
-      ],
-      'Biceps': ['curl', 'chin-up'],
-      'Triceps': [
-        'pushdown',
-        'skull crusher',
-        'triceps',
-        'bench dip',
-        'kickback',
-      ],
-      'Legs': ['squat', 'leg ', 'lunge', 'calf', 'step-up', 'hamstring'],
-      'Abs': [
-        'crunch',
-        'plank',
-        'twist',
-        'ab wheel',
-        'dead bug',
-        'mountain climber',
-      ],
-      'Glutes': [
-        'hip thrust',
-        'glute',
-        'kickback',
-        'hip abduction',
-        'lateral walk',
-      ],
-    };
-    return (exerciseAliases[selectedCategory] ?? const <String>[]).any(
-      name.contains,
-    );
-  }
 }

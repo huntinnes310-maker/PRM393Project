@@ -72,6 +72,26 @@ class ApiClient {
     return await http.delete(url, headers: headers);
   }
 
+  // --- POST multipart (upload file, vd: ảnh/video cho AI phân tích) ---
+  Future<http.Response> postMultipart(
+    String endpoint, {
+    required String fileField,
+    required List<int> fileBytes,
+    required String filename,
+    Map<String, String> fields = const {},
+    bool requireAuth = true,
+  }) async {
+    final headers = await _buildHeaders(requireAuth: requireAuth);
+    headers.remove('Content-Type'); // để http tự set multipart boundary
+    final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
+    final request = http.MultipartRequest('POST', url)
+      ..headers.addAll(headers)
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile.fromBytes(fileField, fileBytes, filename: filename));
+    final streamed = await request.send();
+    return http.Response.fromStream(streamed);
+  }
+
   // Helper: decode response body sang dynamic (có thể là Map hoặc List)
   static dynamic decodeResponse(http.Response response) {
     return jsonDecode(utf8.decode(response.bodyBytes));

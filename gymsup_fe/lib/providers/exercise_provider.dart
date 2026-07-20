@@ -17,6 +17,14 @@ class ExerciseProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// Danh sách category thật lấy từ dữ liệu muscle (khớp với cách backend
+  /// lọc exercise theo category), thay vì danh sách hardcode.
+  List<String> get categories {
+    final set = _muscles.map((m) => m.category).where((c) => c.isNotEmpty).toSet().toList();
+    set.sort();
+    return set;
+  }
+
   /// Tải danh sách bài tập từ backend (có hỗ trợ lọc theo nhóm cơ/category)
   Future<void> fetchExercises({String? category, String? muscleId}) async {
     _isLoading = true;

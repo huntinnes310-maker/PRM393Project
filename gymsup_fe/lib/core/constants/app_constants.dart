@@ -1,17 +1,7 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 class AppConstants {
   // --- Base API URL ---
-  // Tự động chọn đúng địa chỉ theo nền tảng:
-  // - Web (Chrome): dùng localhost
-  // - Android Emulator: dùng 10.0.2.2 (alias của localhost trên máy ảo)
-  // - Android thật (USB): đổi thành IP máy tính, VD: http://192.168.1.x:5000/api
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:5028/api';
-    }
-    return 'http://10.0.2.2:5028/api';
-  }
+  // Backend đã được host trên VPS (cùng backend mà gym_support đang dùng).
+  static const String baseUrl = 'https://api.gsfitness.id.vn/api';
 
   // --- API Endpoints ---
   // Auth
@@ -29,9 +19,10 @@ class AppConstants {
   static const String home = '/home';
 
   // Workout
-  static const String workoutPlans = '/workout-plans';
+  static const String workoutPlans = '/workoutplans';
   static const String workoutSessions = '/workout-session-logs';
   static const String exercises = '/exercises';
+  static const String muscles = '/muscles';
 
   // Analytics
   static const String analytics = '/analytics';

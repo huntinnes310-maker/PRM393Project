@@ -7,6 +7,9 @@ import 'providers/home_provider.dart';
 import 'providers/exercise_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/payment_provider.dart';
+import 'providers/onboarding_provider.dart';
+import 'providers/workout_plan_provider.dart';
+import 'providers/workout_session_provider.dart';
 import 'routes/app_router.dart';
 
 void main() {
@@ -18,6 +21,9 @@ void main() {
         ChangeNotifierProvider(create: (_) => ExerciseProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
         ChangeNotifierProvider(create: (_) => PaymentProvider()..fetchMySubscription()),
+        ChangeNotifierProvider(create: (_) => OnboardingProvider()),
+        ChangeNotifierProvider(create: (_) => WorkoutPlanProvider()),
+        ChangeNotifierProvider(create: (_) => WorkoutSessionProvider()),
       ],
       child: const GymSupApp(),
     ),

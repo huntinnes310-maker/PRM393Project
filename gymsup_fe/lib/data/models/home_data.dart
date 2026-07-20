@@ -1,10 +1,13 @@
+import '../../core/utils/exercise_asset_resolver.dart';
+import 'popular_exercise.dart';
+
 class HomeData {
   final List<dynamic> history;
   final List<dynamic> plans;
   final TodayPlan? todayPlan;
   final HomeNutrition nutrition;
   final List<MuscleProgress> muscleProgress;
-  final List<dynamic> popularExercises;
+  final List<PopularExercise> popularExercises;
   final int streak;
   final int workoutCount;
   final List<dynamic> badges;
@@ -32,7 +35,9 @@ class HomeData {
       muscleProgress: (json['muscleProgress'] as List? ?? [])
           .map((x) => MuscleProgress.fromJson(x))
           .toList(),
-      popularExercises: json['popularExercises'] ?? [],
+      popularExercises: (json['popularExercises'] as List? ?? [])
+          .map((x) => PopularExercise.fromJson(x))
+          .toList(),
       streak: json['streak'] ?? 0,
       workoutCount: json['workoutCount'] ?? 0,
       badges: json['badges'] ?? [],
@@ -85,11 +90,7 @@ class TodayExercise {
     if (imageUrl.isNotEmpty && imageUrl.startsWith('http')) {
       return imageUrl;
     }
-    final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'-+$|^-+'), '');
-    if (slug == 'barbell-bench-press' || slug == 'dumbbell-bench-press' || slug == 'incline-barbell-press') {
-      return 'assets/exercises/images/$slug.png';
-    }
-    return 'assets/exercises/images/$slug.webp';
+    return resolveExerciseAssetPath(name);
   }
 
   bool get isAssetImage => !displayImageUrl.startsWith('http');

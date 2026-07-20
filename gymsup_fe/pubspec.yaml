@@ -44,6 +44,7 @@ dependencies:
   intl: ^0.20.2                       # Format ngày giờ, số
   video_player: ^2.12.0
   url_launcher: ^6.3.2
+  image_picker: ^1.1.2                # Chọn/chụp ảnh, video cho AI phân tích
 
 dev_dependencies:
   flutter_test:
@@ -56,3 +57,7 @@ flutter:
   assets:
     - assets/exercises/images/
     - assets/exercises/videos/
+    - assets/body/body_front.png
+    - assets/body/body_back.png
+    - assets/body/masks/
+    - assets/images/ranks/

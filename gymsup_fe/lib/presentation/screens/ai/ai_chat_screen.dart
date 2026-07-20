@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../providers/auth_provider.dart';
+import 'generate_plan_screen.dart';
+import 'scan_equipment_screen.dart';
 
 class ChatSuggestionModel {
   final String action;
@@ -140,7 +142,8 @@ class AiChatScreen extends StatefulWidget {
   State<AiChatScreen> createState() => _AiChatScreenState();
 }
 
-class _AiChatScreenState extends State<AiChatScreen> {
+class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   static const _aiPrimary = Color(0xFF9185FF);
   static const _aiAccent = Color(0xFF56D6C9);
   static const _aiSurface = Color(0xFF17181F);
@@ -163,6 +166,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadChatHistory();
     });
@@ -170,9 +174,21 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openScanEquipment() async {
+    final result = await Navigator.of(context).push<Map>(
+      MaterialPageRoute(builder: (_) => const ScanEquipmentScreen()),
+    );
+    if (result == null) return;
+    final text = result['text']?.toString() ?? '';
+    if (text.isNotEmpty) {
+      _sendMessage(text);
+    }
   }
 
   void _scrollToBottom() {
@@ -440,30 +456,50 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ),
           const SizedBox(width: 12),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: _aiPrimary,
+          labelColor: _aiPrimary,
+          unselectedLabelColor: AppColors.textSecondary,
+          tabs: const [
+            Tab(text: 'Trò chuyện'),
+            Tab(text: 'Tạo lịch AI'),
+          ],
+        ),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: _messages.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
-                          itemCount: _messages.length,
-                          itemBuilder: (ctx, index) {
-                            return _buildMessageItem(index, _messages[index]);
-                          },
-                        ),
-                ),
-                if (_isThinking) _buildThinkingIndicator(),
-                _buildInputBar(),
-              ],
-            ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildChatTab(),
+          const GeneratePlanScreen(embedded: true),
+        ],
+      ),
     );
+  }
+
+  Widget _buildChatTab() {
+    return _isLoading
+        ? const Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          )
+        : Column(
+            children: [
+              Expanded(
+                child: _messages.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
+                        itemCount: _messages.length,
+                        itemBuilder: (ctx, index) {
+                          return _buildMessageItem(index, _messages[index]);
+                        },
+                      ),
+              ),
+              if (_isThinking) _buildThinkingIndicator(),
+              _buildInputBar(),
+            ],
+          );
   }
 
   Widget _buildEmptyState() {
@@ -1279,6 +1315,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
               ),
               child: Row(
                 children: [
+                  IconButton(
+                    tooltip: 'Phân tích ảnh/video bằng AI',
+                    onPressed: _openScanEquipment,
+                    icon: const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _inputController,

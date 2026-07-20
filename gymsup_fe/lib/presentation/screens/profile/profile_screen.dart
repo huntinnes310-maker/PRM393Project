@@ -9,6 +9,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/customer_profile.dart';
 import '../../../core/network/api_client.dart';
 import 'achievements_screen.dart';
+import '../ai/scan_equipment_screen.dart';
+import '../workout/workout_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -237,8 +239,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Huy hiệu & Thành tích
       _buildBadgesSection(badges),
-      const SizedBox(height: 8),
+      const SizedBox(height: 20),
+
+      // Truy cập nhanh
+      _buildSectionTitle('Truy cập nhanh', Icons.apps_outlined),
+      const SizedBox(height: 12),
+      _buildMenuGroup([
+        _buildMenuRow(
+          icon: Icons.workspace_premium_outlined,
+          label: 'Hội viên Premium',
+          badgeText: 'Nâng cấp',
+          onTap: () => context.push('/subscription'),
+        ),
+        _buildMenuRow(
+          icon: Icons.history_outlined,
+          label: 'Lịch sử tập luyện',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const WorkoutHistoryScreen()),
+          ),
+        ),
+        _buildMenuRow(
+          icon: Icons.camera_alt_outlined,
+          label: 'Quét thiết bị / phân tích AI',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ScanEquipmentScreen()),
+          ),
+          isLast: true,
+        ),
+      ]),
     ];
+  }
+
+  Widget _buildMenuGroup(List<Widget> rows) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.surfaceVariant),
+      ),
+      child: Column(children: rows),
+    );
+  }
+
+  Widget _buildMenuRow({
+    required IconData icon,
+    required String label,
+    String? badgeText,
+    required VoidCallback onTap,
+    bool isLast = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: isLast
+              ? null
+              : const Border(bottom: BorderSide(color: AppColors.surfaceVariant, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 18),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+            ),
+            if (badgeText != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: Text(badgeText, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, color: AppColors.textHint, size: 18),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBadgesSection(List<dynamic> badges) {

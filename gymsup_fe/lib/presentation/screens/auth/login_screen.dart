@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../widgets/auth/auth_hero_header.dart';
+import '../../widgets/auth/auth_tab_switcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -48,110 +50,110 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 40),
-                // Logo & Title
-                const Icon(
-                  Icons.fitness_center,
-                  color: AppColors.primary,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'GymSup',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Đồng hành cùng hành trình tập luyện của bạn',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 48),
-                // Email field
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined, color: AppColors.textSecondary),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Vui lòng nhập email';
-                    if (!v.contains('@')) return 'Email không hợp lệ';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Password field
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Mật khẩu',
-                    prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textSecondary),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                        color: AppColors.textSecondary,
-                      ),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Vui lòng nhập mật khẩu';
-                    if (v.length < 6) return 'Mật khẩu ít nhất 6 ký tự';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 32),
-                // Login button
-                ElevatedButton(
-                  onPressed: authProvider.isLoading ? null : _handleLogin,
-                  child: authProvider.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text('Đăng nhập'),
-                ),
-                const SizedBox(height: 16),
-                // Register link
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const AuthHeroHeader(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Chưa có tài khoản ? ',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
+                    AuthTabSwitcher(
+                      isLoginMode: true,
+                      onTapLogin: () {},
+                      onTapRegister: () => context.go('/register'),
+                    ),
+                    const SizedBox(height: 28),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty)
+                          return 'Vui lòng nhập email';
+                        if (!v.contains('@')) return 'Email không hợp lệ';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) {
+                        if (!authProvider.isLoading) _handleLogin();
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Mật khẩu',
+                        prefixIcon: const Icon(
+                          Icons.lock_outlined,
+                          color: AppColors.textSecondary,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: AppColors.textSecondary,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty)
+                          return 'Vui lòng nhập mật khẩu';
+                        if (v.length < 6) return 'Mật khẩu ít nhất 6 ký tự';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: authProvider.isLoading ? null : _handleLogin,
+                        child: authProvider.isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Đăng nhập'),
                       ),
                     ),
-                    TextButton(
-                      onPressed: () => context.go('/register'),
-                      child: const Text(
-                        'Đăng ký ngay',
-                        style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: TextButton(
+                        onPressed: () {},
+                        child: const Text(
+                          'Quên mật khẩu?',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

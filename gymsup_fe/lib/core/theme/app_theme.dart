@@ -38,7 +38,15 @@ class AppColors {
 
   // Muscle EXP gradient
   static const expGradient = [Color(0xFFFF9800), Color(0xFFFF5722)];
+
+  // Muscle tier badge colors (Iron -> Champion)
+  static const ironBadge = Color(0xFF6B7280);
+  static const bronzeBadge = Color(0xFFCD7F32);
+  static const silverBadge = Color(0xFFA8A8A8);
   static const goldBadge = Color(0xFFFFD700);
+  static const platinumBadge = Color(0xFFB8C4D9);
+  static const diamondBadge = Color(0xFF2196F3);
+  static const championBadge = Color(0xFF9C27B0);
 }
 
 class AppTheme {
