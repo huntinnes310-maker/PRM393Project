@@ -21,4 +21,13 @@ public class MongoDbContext
 
     public IMongoCollection<ChatMessage> ChatMessages =>
     GetCollection<ChatMessage>("ChatMessages");
+
+    public IMongoCollection<AiMonthlyBudget> AiMonthlyBudgets =>
+        GetCollection<AiMonthlyBudget>("AiMonthlyBudgets");
+
+    public IMongoCollection<AiUsageLog> AiUsageLogs =>
+        GetCollection<AiUsageLog>("AiUsageLogs");
+
+    public IMongoCollection<AiDailyQuota> AiDailyQuotas =>
+        GetCollection<AiDailyQuota>("AiDailyQuotas");
 }

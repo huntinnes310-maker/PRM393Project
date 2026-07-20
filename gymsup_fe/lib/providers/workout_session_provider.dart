@@ -3,6 +3,7 @@ import '../core/network/api_client.dart';
 import '../core/constants/app_constants.dart';
 import '../data/models/workout_session_log.dart';
 import '../data/models/finish_workout_result.dart';
+import '../data/models/workout_evaluation.dart';
 
 class WorkoutSessionProvider extends ChangeNotifier {
   final ApiClient _apiClient = ApiClient();
@@ -20,10 +21,13 @@ class WorkoutSessionProvider extends ChangeNotifier {
 
   Future<WorkoutSessionLog?> fetchActiveSession(String userId) async {
     try {
-      final response =
-          await _apiClient.get('${AppConstants.workoutSessions}/active/$userId');
+      final response = await _apiClient.get(
+        '${AppConstants.workoutSessions}/active/$userId',
+      );
       if (response.statusCode == 200) {
-        _activeSession = WorkoutSessionLog.fromJson(ApiClient.decodeResponse(response));
+        _activeSession = WorkoutSessionLog.fromJson(
+          ApiClient.decodeResponse(response),
+        );
       } else {
         _activeSession = null;
       }
@@ -49,13 +53,16 @@ class WorkoutSessionProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      final response = await _apiClient.post('${AppConstants.workoutSessions}/start', {
-        'userId': userId,
-        'workoutPlanId': workoutPlanId,
-        'planSessionId': planSessionId,
-      });
+      final response = await _apiClient
+          .post('${AppConstants.workoutSessions}/start', {
+            'userId': userId,
+            'workoutPlanId': workoutPlanId,
+            'planSessionId': planSessionId,
+          });
       if (response.statusCode == 200 || response.statusCode == 201) {
-        _activeSession = WorkoutSessionLog.fromJson(ApiClient.decodeResponse(response));
+        _activeSession = WorkoutSessionLog.fromJson(
+          ApiClient.decodeResponse(response),
+        );
         return _activeSession;
       }
       _errorMessage = 'Không thể bắt đầu buổi tập.';
@@ -101,7 +108,9 @@ class WorkoutSessionProvider extends ChangeNotifier {
         },
       );
       if (response.statusCode == 200) {
-        _activeSession = WorkoutSessionLog.fromJson(ApiClient.decodeResponse(response));
+        _activeSession = WorkoutSessionLog.fromJson(
+          ApiClient.decodeResponse(response),
+        );
         notifyListeners();
         return true;
       }
@@ -114,10 +123,14 @@ class WorkoutSessionProvider extends ChangeNotifier {
 
   Future<FinishWorkoutResult?> finishSession(String sessionLogId) async {
     try {
-      final response =
-          await _apiClient.put('${AppConstants.workoutSessions}/$sessionLogId/finish', {});
+      final response = await _apiClient.put(
+        '${AppConstants.workoutSessions}/$sessionLogId/finish',
+        {},
+      );
       if (response.statusCode == 200) {
-        final result = FinishWorkoutResult.fromJson(ApiClient.decodeResponse(response));
+        final result = FinishWorkoutResult.fromJson(
+          ApiClient.decodeResponse(response),
+        );
         _activeSession = null;
         notifyListeners();
         return result;
@@ -133,8 +146,9 @@ class WorkoutSessionProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response =
-          await _apiClient.get('${AppConstants.workoutSessions}/user/$userId/history');
+      final response = await _apiClient.get(
+        '${AppConstants.workoutSessions}/user/$userId/history',
+      );
       if (response.statusCode == 200) {
         final data = ApiClient.decodeResponse(response) as List;
         _history = data.map((x) => WorkoutSessionLog.fromJson(x)).toList();
@@ -147,10 +161,16 @@ class WorkoutSessionProvider extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>?> fetchExerciseStats(String userId, String exerciseId) async {
-    if (_exerciseStats.containsKey(exerciseId)) return _exerciseStats[exerciseId];
+  Future<Map<String, dynamic>?> fetchExerciseStats(
+    String userId,
+    String exerciseId,
+  ) async {
+    if (_exerciseStats.containsKey(exerciseId))
+      return _exerciseStats[exerciseId];
     try {
-      final response = await _apiClient.get('/users/$userId/exercise-stats/$exerciseId');
+      final response = await _apiClient.get(
+        '/users/$userId/exercise-stats/$exerciseId',
+      );
       if (response.statusCode == 200) {
         final data = ApiClient.decodeResponse(response) as Map<String, dynamic>;
         _exerciseStats[exerciseId] = data;
@@ -165,5 +185,53 @@ class WorkoutSessionProvider extends ChangeNotifier {
   void clearActiveSession() {
     _activeSession = null;
     notifyListeners();
+  }
+
+  WorkoutEvaluation? _evaluation;
+  bool _isEvaluating = false;
+  String? _evaluationError;
+  String? _evaluationErrorCode;
+
+  WorkoutEvaluation? get evaluation => _evaluation;
+  bool get isEvaluating => _isEvaluating;
+  String? get evaluationError => _evaluationError;
+  String? get evaluationErrorCode => _evaluationErrorCode;
+
+  /// Lấy báo cáo đánh giá AI cho 1 buổi tập đã hoàn thành (tính năng Premium).
+  /// Backend cache lại kết quả nên gọi lại không tốn thêm lượt AI.
+  Future<WorkoutEvaluation?> evaluateWorkout(String sessionLogId) async {
+    _isEvaluating = true;
+    _evaluationError = null;
+    _evaluationErrorCode = null;
+    _evaluation = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.post(
+        '/ai/evaluate-workout/$sessionLogId',
+        {},
+      );
+
+      if (response.statusCode == 200) {
+        _evaluation = WorkoutEvaluation.fromJson(
+          ApiClient.decodeResponse(response),
+        );
+        return _evaluation;
+      }
+
+      final data = ApiClient.decodeResponse(response);
+      _evaluationErrorCode = data is Map ? data['code']?.toString() : null;
+      _evaluationError = data is Map
+          ? (data['message']?.toString() ?? 'Không thể tạo đánh giá.')
+          : 'Không thể tạo đánh giá.';
+      return null;
+    } catch (e) {
+      _evaluationError = 'Lỗi kết nối. Vui lòng thử lại.';
+      debugPrint('evaluateWorkout error: $e');
+      return null;
+    } finally {
+      _isEvaluating = false;
+      notifyListeners();
+    }
   }
 }

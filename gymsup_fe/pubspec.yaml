@@ -16,6 +16,7 @@ dependencies:
 
   # --- Networking & API ---
   http: ^1.2.2                        # Gọi REST API tới Backend ASP.NET
+  http_parser: ^4.0.2                 # MediaType cho multipart upload (ảnh/video AI)
 
   # --- State Management ---
   provider: ^6.1.2                    # Quản lý state toàn app

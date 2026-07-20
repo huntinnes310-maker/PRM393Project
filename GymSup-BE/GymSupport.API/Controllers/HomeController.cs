@@ -4,8 +4,6 @@ using GymSupport.Repository.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using GymCoach.Api.Config;
-using MongoDB.Driver;
 
 namespace GymSupport.API.Controllers;
 
@@ -21,7 +19,6 @@ public class HomeController : ControllerBase
     private readonly IMuscleRepository _muscleRepository;
     private readonly IUserMuscleProgressRepository _muscleProgressRepository;
     private readonly IUserBadgeRepository _badgeRepository;
-    private readonly IMongoCollection<MealPlan> _mealPlansCollection;
 
     public HomeController(
         IWorkoutPlanRepository workoutPlanRepository,
@@ -30,8 +27,7 @@ public class HomeController : ControllerBase
         IExerciseRepository exerciseRepository,
         IMuscleRepository muscleRepository,
         IUserMuscleProgressRepository muscleProgressRepository,
-        IUserBadgeRepository badgeRepository,
-        MongoDbContext context)
+        IUserBadgeRepository badgeRepository)
     {
         _workoutPlanRepository = workoutPlanRepository;
         _workoutSessionLogRepository = workoutSessionLogRepository;
@@ -40,7 +36,6 @@ public class HomeController : ControllerBase
         _muscleRepository = muscleRepository;
         _muscleProgressRepository = muscleProgressRepository;
         _badgeRepository = badgeRepository;
-        _mealPlansCollection = context.GetCollection<MealPlan>("MealPlans");
     }
 
     [HttpGet("{userId}")]
@@ -61,16 +56,8 @@ public class HomeController : ControllerBase
         var exercises = (await _exerciseRepository.GetAllAsync()).ToList();
         var muscles = await _muscleRepository.GetAllAsync();
 
-        var todayLocal = DateTime.Today;
-        var startOfDay = todayLocal.Date;
-        var endOfDay = todayLocal.Date.AddDays(1).AddTicks(-1);
-
-        var mealPlan = await _mealPlansCollection
-            .Find(x => x.UserId == userId && x.Date >= startOfDay && x.Date <= endOfDay)
-            .FirstOrDefaultAsync();
-
         var todayPlan = BuildTodayPlan(plans, exercises, muscles);
-        var nutrition = BuildNutrition(customer, mealPlan);
+        var nutrition = BuildNutrition(customer);
         var userMuscleProgress = await _muscleProgressRepository.GetByUserIdAsync(userId);
         var muscleProgress = BuildMuscleProgress(userMuscleProgress, muscles);
         var popularExercises = BuildPopularExercises(history, exercises);
@@ -84,7 +71,7 @@ public class HomeController : ControllerBase
             nutrition,
             muscleProgress,
             popularExercises,
-            streak = CalculateCalendarStreak(history),
+            streak = CalculateScheduleAwareStreak(history),
             workoutCount = history.Count(x => x.Status == "COMPLETED"),
             badges,
         });
@@ -231,58 +218,49 @@ public class HomeController : ControllerBase
         };
     }
 
-    private static object BuildNutrition(Customer? customer, MealPlan? mealPlan)
+    private static object BuildNutrition(Customer? customer)
     {
-        double caloriesGoal = 2000;
-        int proteinGoal = 100;
-        double waterGoal = 2.0;
-
-        double caloriesLogged = mealPlan?.TotalCalories ?? 0;
-        double proteinLogged = mealPlan?.Protein ?? 0;
-        double waterLogged = mealPlan?.WaterLiters ?? 0.0;
-
-        if (customer != null)
+        if (customer == null)
         {
-            var weight = customer.WeightKg;
-            var height = customer.HeightCm;
-            var age = customer.Age;
-
-            if (weight > 0)
+            return new
             {
-                proteinGoal = (int)Math.Round(weight * 1.8);
-                waterGoal = Math.Round(weight * 30 / 1000.0, 1);
-            }
-
-            if (weight > 0 && height > 0 && age > 0)
-            {
-                var gender = customer.Gender?.ToLowerInvariant() ?? "";
-                var goal = customer.Goal?.ToLowerInvariant() ?? "";
-                var bmr = gender.Contains("nữ") || gender.Contains("female")
-                    ? 10 * weight + 6.25 * height - 5 * age - 161
-                    : 10 * weight + 6.25 * height - 5 * age + 5;
-
-                var c = bmr * 1.45;
-                if (goal.Contains("giảm") || goal.Contains("lose"))
-                    c -= 300;
-                else if (goal.Contains("tăng cơ") || goal.Contains("strength") || goal.Contains("muscle"))
-                    c += 250;
-
-                caloriesGoal = Math.Round(c);
-            }
+                calories = "—",
+                protein = "—",
+                water = "—"
+            };
         }
 
-        double caloriesPercent = caloriesGoal > 0 ? Math.Min(1.0, caloriesLogged / caloriesGoal) : 0.0;
-        double proteinPercent = proteinGoal > 0 ? Math.Min(1.0, proteinLogged / proteinGoal) : 0.0;
-        double waterPercent = waterGoal > 0 ? Math.Min(1.0, waterLogged / waterGoal) : 0.0;
+        var weight = customer.WeightKg;
+        var height = customer.HeightCm;
+        var age = customer.Age;
+
+        if (weight <= 0 || height <= 0 || age <= 0)
+        {
+            return new
+            {
+                calories = "—",
+                protein = weight > 0 ? $"{Math.Round(weight * 1.8)}g" : "—",
+                water = weight > 0 ? $"{Math.Round(weight * 35 / 1000.0, 1)}L" : "—"
+            };
+        }
+
+        var gender = customer.Gender?.ToLowerInvariant() ?? "";
+        var goal = customer.Goal?.ToLowerInvariant() ?? "";
+        var bmr = gender.Contains("nữ") || gender.Contains("female")
+            ? 10 * weight + 6.25 * height - 5 * age - 161
+            : 10 * weight + 6.25 * height - 5 * age + 5;
+
+        var calories = bmr * 1.45;
+        if (goal.Contains("giảm") || goal.Contains("lose"))
+            calories -= 300;
+        else if (goal.Contains("tăng cơ") || goal.Contains("strength") || goal.Contains("muscle"))
+            calories += 250;
 
         return new
         {
-            calories = $"{caloriesLogged} / {caloriesGoal} kcal",
-            protein = $"{proteinLogged} / {proteinGoal}g",
-            water = $"{waterLogged} / {waterGoal}L",
-            caloriesPercent,
-            proteinPercent,
-            waterPercent
+            calories = $"{Math.Round(calories)} kcal",
+            protein = $"{Math.Round(weight * 1.8)}g",
+            water = $"{Math.Round(weight * 35 / 1000.0, 1)}L"
         };
     }
 

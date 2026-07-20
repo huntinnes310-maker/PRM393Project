@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../../../core/constants/app_images.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../providers/ai_usage_provider.dart';
@@ -96,6 +97,18 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     });
   }
 
+  /// Dự phòng khi XFile không tự báo mimeType (một số nền tảng/trình duyệt) -
+  /// suy ra từ đuôi file, phải khớp đúng danh sách backend cho phép.
+  String _guessMimeType(String filename, bool isVideo) {
+    final lower = filename.toLowerCase();
+    if (isVideo) {
+      return lower.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
+    }
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
   Future<void> _analyzeMedia() async {
     final selectedMode = _currentMode;
     final media = _mediaByMode[selectedMode];
@@ -116,45 +129,40 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
 
     try {
       final bytes = await media.readAsBytes();
+      final mimeType = media.mimeType ?? _guessMimeType(media.name, isVideo);
       final response = isVideo
           ? await _apiClient.postMultipart(
               '/ai/analyze-form-video',
               fileField: 'video',
               fileBytes: bytes,
               filename: media.name,
+              contentType: mimeType,
             )
           : await _apiClient.postMultipart(
               '/ai/analyze-image',
               fileField: 'image',
               fileBytes: bytes,
               filename: media.name,
+              contentType: mimeType,
               fields: {'mode': selectedMode},
             );
 
-      if (response.statusCode == 403 || response.statusCode == 429) {
-        final data = ApiClient.decodeResponse(response);
-        final msg = data is Map ? data['message']?.toString() : null;
+      if (response.statusCode == 200) {
+        final result =
+            ApiClient.decodeResponse(response) as Map<String, dynamic>;
         if (!mounted) return;
-        setState(
-          () => _errorsByMode[selectedMode] =
-              msg ?? 'Bạn không thể dùng tính năng này lúc này.',
-        );
+        setState(() => _resultsByMode[selectedMode] = result);
         return;
       }
 
-      if (response.statusCode != 200) {
-        final data = ApiClient.decodeResponse(response);
-        throw Exception(
-          data is Map
-              ? (data['message'] ?? 'Không thể phân tích.')
-              : 'Không thể phân tích.',
-        );
-      }
-
-      final result = ApiClient.decodeResponse(response) as Map<String, dynamic>;
+      final data = ApiClient.decodeResponse(response);
+      final backendMessage = data is Map ? data['message']?.toString() : null;
       if (!mounted) return;
-      setState(() => _resultsByMode[selectedMode] = result);
-    } catch (_) {
+      setState(
+        () => _errorsByMode[selectedMode] =
+            backendMessage ?? 'Không thể phân tích.',
+      );
+    } catch (e) {
       if (!mounted) return;
       setState(
         () => _errorsByMode[selectedMode] = isVideo
@@ -185,6 +193,7 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     } else {
       body = Column(
         children: [
+          _buildHeroBanner(),
           _buildModeSelector(),
           Consumer<AiUsageProvider>(
             builder: (context, usage, _) {
@@ -229,6 +238,74 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('AI Phân tích')),
       body: body,
+    );
+  }
+
+  String get _bannerImage {
+    switch (_currentMode) {
+      case 'body_check':
+        return AppImages.gymHero;
+      case 'form_check':
+        return AppImages.workoutBanner;
+      default:
+        return AppImages.muscleChest;
+    }
+  }
+
+  String get _bannerCaption {
+    switch (_currentMode) {
+      case 'body_check':
+        return 'Phân tích vóc dáng bằng AI';
+      case 'form_check':
+        return 'Kiểm tra form tập chuẩn xác';
+      default:
+        return 'Nhận diện máy tập & dụng cụ';
+    }
+  }
+
+  Widget _buildHeroBanner() {
+    return Container(
+      height: 120,
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            _bannerImage,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) =>
+                Container(color: AppColors.cardBackground),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppColors.background.withValues(alpha: 0.3),
+                  AppColors.background.withValues(alpha: 0.88),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Text(
+                _bannerCaption,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -512,36 +589,18 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Column(
       children: [
         _buildSummaryCard(data),
-        _buildListSection(
-          'Nhận xét vóc dáng',
-          data['bodyObservations'],
-          Icons.visibility_outlined,
-        ),
+        _buildListSection('Nhận xét vóc dáng', data['bodyObservations']),
         _buildListSection(
           'Nhóm cơ nên ưu tiên',
           data['priorityMuscles'],
-          Icons.star_outline,
           isPrimary: true,
         ),
-        _buildListSection(
-          'Nhóm cơ liên quan',
-          data['muscles'],
-          Icons.fitness_center,
-        ),
-        _buildListSection(
-          'Bài tập gợi ý',
-          data['suggestedExercises'],
-          Icons.directions_run,
-        ),
-        _buildListSection(
-          'Lời khuyên tập luyện',
-          data['trainingAdvice'],
-          Icons.lightbulb_outline,
-        ),
+        _buildListSection('Nhóm cơ liên quan', data['muscles']),
+        _buildListSection('Bài tập gợi ý', data['suggestedExercises']),
+        _buildListSection('Lời khuyên tập luyện', data['trainingAdvice']),
         _buildListSection(
           'Cảnh báo',
           data['warnings'],
-          Icons.warning_amber_outlined,
           color: Colors.orangeAccent,
         ),
         const SizedBox(height: 20),
@@ -557,52 +616,31 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
         _buildListSection(
           'Bài tập phát hiện',
           data['detectedExercise'],
-          Icons.fitness_center,
           isPrimary: true,
         ),
-        _buildListSection(
-          'Đánh giá tổng quan',
-          data['overallVerdict'],
-          Icons.assignment_outlined,
-        ),
-        _buildListSection(
-          'Tóm tắt chuyển động',
-          data['movementSummary'],
-          Icons.directions_run,
-        ),
+        _buildListSection('Đánh giá tổng quan', data['overallVerdict']),
+        _buildListSection('Tóm tắt chuyển động', data['movementSummary']),
         _buildListSection(
           'Lỗi nghiêm trọng',
           data['majorIssues'],
-          Icons.error_outline,
           color: Colors.redAccent,
         ),
         _buildListSection(
           'Lỗi cần cải thiện',
           data['minorIssues'],
-          Icons.info_outline,
           color: Colors.orangeAccent,
         ),
         _buildListSection(
           'Điểm thực hiện đúng',
           data['correctPoints'],
-          Icons.check_circle_outline,
           color: AppColors.primary,
         ),
-        _buildListSection('Cơ tham gia', data['muscles'], Icons.fitness_center),
-        _buildListSection(
-          'Cue sửa kỹ thuật',
-          data['correctiveCues'],
-          Icons.build_outlined,
-        ),
-        _buildListSection(
-          'Cách cải thiện',
-          data['suggestedFixes'],
-          Icons.lightbulb_outline,
-        ),
+        _buildListSection('Cơ tham gia', data['muscles']),
+        _buildListSection('Cue sửa kỹ thuật', data['correctiveCues']),
+        _buildListSection('Cách cải thiện', data['suggestedFixes']),
         _buildListSection(
           'Cảnh báo an toàn',
           data['warnings'],
-          Icons.shield_outlined,
           color: Colors.redAccent,
         ),
         const SizedBox(height: 20),
@@ -615,31 +653,13 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Column(
       children: [
         _buildSummaryCard(data),
-        _buildListSection(
-          'Vật thể phát hiện',
-          data['detectedItems'],
-          Icons.grid_view,
-        ),
-        _buildListSection(
-          'Nhóm cơ tác động',
-          data['muscles'],
-          Icons.bolt,
-          isPrimary: true,
-        ),
-        _buildListSection(
-          'Bài tập thực hiện',
-          data['suggestedExercises'],
-          Icons.play_circle_outline,
-        ),
-        _buildListSection(
-          'Cách dùng / Lời khuyên',
-          data['trainingAdvice'],
-          Icons.help_outline,
-        ),
+        _buildListSection('Vật thể phát hiện', data['detectedItems']),
+        _buildListSection('Nhóm cơ tác động', data['muscles'], isPrimary: true),
+        _buildListSection('Bài tập thực hiện', data['suggestedExercises']),
+        _buildListSection('Cách dùng / Lời khuyên', data['trainingAdvice']),
         _buildListSection(
           'Cảnh báo an toàn',
           data['warnings'],
-          Icons.warning_amber_outlined,
           color: Colors.orangeAccent,
         ),
         const SizedBox(height: 20),
@@ -688,8 +708,7 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
 
   Widget _buildListSection(
     String title,
-    dynamic list,
-    IconData icon, {
+    dynamic list, {
     bool isPrimary = false,
     Color? color,
   }) {
@@ -705,24 +724,18 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border(left: BorderSide(color: themeColor, width: 3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: themeColor, size: 18),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: TextStyle(
-                  color: themeColor,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ],
+          Text(
+            title,
+            style: TextStyle(
+              color: themeColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 12),
           ...items.map(

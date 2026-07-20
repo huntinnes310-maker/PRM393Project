@@ -42,6 +42,12 @@ namespace GymSupport.Service.Interfaces
         public DateTime EndDate { get; set; }
         public int DaysRemaining { get; set; }
         public string Status { get; set; } = "active";
+
+        /// <summary>
+        /// Nguồn chân lý cho client: true khi gói là Premium VÀ còn hiệu lực
+        /// (chưa hết hạn). Gói đã hủy nhưng còn hạn vẫn = true tới hết kỳ.
+        /// </summary>
+        public bool IsPremium { get; set; }
     }
 
     public class CreateSubscriptionPlanDto

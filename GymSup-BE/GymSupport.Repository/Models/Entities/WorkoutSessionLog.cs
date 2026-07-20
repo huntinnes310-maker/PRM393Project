@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using System;
 using System.Collections.Generic;
@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 
 namespace GymSupport.Repository.Models.Entities
 {
-    [BsonIgnoreExtraElements]
     public class WorkoutSessionLog
     {
         [BsonId]
@@ -50,5 +49,9 @@ namespace GymSupport.Repository.Models.Entities
         // Snapshot of the user's scheduled days-of-week at the time this session was completed.
         // Used by the schedule-aware streak algorithm to avoid plan-change false resets.
         public List<string> ScheduledDaysOfWeek { get; set; } = new();
+
+        // Cached AI workout evaluation report (Premium feature). Null until generated;
+        // cached here so re-opening the summary never re-triggers an OpenAI call.
+        public WorkoutEvaluation? Evaluation { get; set; }
     }
 }

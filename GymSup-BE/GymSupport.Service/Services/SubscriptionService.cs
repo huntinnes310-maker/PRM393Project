@@ -98,7 +98,8 @@ public class SubscriptionService : ISubscriptionService
             StartDate = subscription.StartedAt,
             EndDate = normalizedExpiry,
             DaysRemaining = Math.Max(0, (int)(normalizedExpiry - now).TotalDays),
-            Status = "active"
+            Status = "active",
+            IsPremium = true
         };
     }
 
@@ -122,13 +123,23 @@ public class SubscriptionService : ISubscriptionService
             }
         }
 
+        // Còn hiệu lực = gói trả phí (Price > 0) VÀ chưa qua ngày hết hạn. Trạng thái
+        // "Cancelled" (hủy gia hạn) vẫn giữ quyền tới hết kỳ nên chỉ dựa vào mốc thời
+        // gian, không dựa vào tên gói — plan có thể được đặt tên bất kỳ (vd "hội viên
+        // năm"/"hội viên tháng"), không nhất thiết phải chứa chữ "premium".
+        var isPremium = subscription.Price > 0
+            && !subscription.Status.Equals("Expired", StringComparison.OrdinalIgnoreCase)
+            && subscription.ExpiredAt.HasValue
+            && subscription.ExpiredAt.Value > now;
+
         return new UserSubscriptionDto
         {
             PlanName = subscription.PlanName,
             StartDate = subscription.StartedAt,
             EndDate = subscription.ExpiredAt ?? now,
             DaysRemaining = Math.Max(0, daysRemaining),
-            Status = subscription.Status.ToLower()
+            Status = subscription.Status.ToLower(),
+            IsPremium = isPremium
         };
     }
 

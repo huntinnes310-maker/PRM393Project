@@ -1,4 +1,4 @@
-using GymSupport.Repository.Interfaces;
+﻿using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.WorkoutPlan;
 using GymSupport.Repository.Models.Entities;
 using GymSupport.Service.Interfaces;
@@ -380,7 +380,7 @@ public class WorkoutSessionLogService : IWorkoutSessionLogService
     public async Task<(int currentStreak, UserBadge? newBadge)> CheckAndAwardStreakBadgeAsync(string userId)
     {
         var history = await _sessionLogRepository.GetByUserIdAsync(userId);
-        var streak = CalculateCalendarStreak(history);
+        var streak = CalculateScheduleAwareStreak(history);
 
         UserBadge? newBadge = null;
         foreach (var (days, type, name, description, emoji) in StreakMilestones.OrderByDescending(m => m.days))

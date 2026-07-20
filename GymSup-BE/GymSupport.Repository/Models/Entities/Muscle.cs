@@ -1,9 +1,8 @@
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace GymSupport.Repository.Models.Entities;
 
-[BsonIgnoreExtraElements]
 public class Muscle
 {
     [BsonId]

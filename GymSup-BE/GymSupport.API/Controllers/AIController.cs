@@ -15,13 +15,57 @@ public class AIController : ControllerBase
 {
     private readonly IAIService _aiService;
     private readonly IChatRepository _chatRepository;
+    private readonly IAiUsageService _aiUsageService;
+    private readonly IWorkoutEvaluationService _workoutEvaluationService;
 
     public AIController(
         IAIService aiService,
-        IChatRepository chatRepository)
+        IChatRepository chatRepository,
+        IAiUsageService aiUsageService,
+        IWorkoutEvaluationService workoutEvaluationService)
     {
         _aiService = aiService;
         _chatRepository = chatRepository;
+        _aiUsageService = aiUsageService;
+        _workoutEvaluationService = workoutEvaluationService;
+    }
+
+    private IActionResult DeniedResult(AiUsageCheckResult check) =>
+        check.Code switch
+        {
+            "NOT_FOUND" => NotFound(new { message = check.Message }),
+            "INVALID_STATE" => BadRequest(new { message = check.Message }),
+            "PREMIUM_REQUIRED" => StatusCode(StatusCodes.Status403Forbidden, new { code = check.Code, message = check.Message }),
+            _ => StatusCode(StatusCodes.Status429TooManyRequests, new { code = check.Code, message = check.Message }),
+        };
+
+    [HttpPost("evaluate-workout/{sessionLogId}")]
+    public async Task<IActionResult> EvaluateWorkout(string sessionLogId)
+    {
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        try
+        {
+            var (check, evaluation) = await _workoutEvaluationService.EvaluateAsync(sessionLogId, userId);
+            if (!check.Allowed) return DeniedResult(check);
+
+            return Ok(evaluation);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("usage/me")]
+    public async Task<IActionResult> GetMyUsage()
+    {
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var snapshot = await _aiUsageService.GetUsageSnapshotAsync(userId);
+        return Ok(snapshot);
     }
 
     [HttpPost("chat")]
@@ -31,6 +75,9 @@ public class AIController : ControllerBase
         {
             var userId = CurrentUserId();
             if (userId == null) return Unauthorized();
+
+            var usageCheck = await _aiUsageService.CheckAndReserveAsync(userId, AiFeature.Chat);
+            if (!usageCheck.Allowed) return DeniedResult(usageCheck);
 
             var result = await _aiService.ChatAsync(
                 userId,
@@ -54,6 +101,9 @@ public class AIController : ControllerBase
         {
             var userId = CurrentUserId();
             if (userId == null) return Unauthorized();
+
+            var usageCheck = await _aiUsageService.CheckAndReserveAsync(userId, AiFeature.GenerateWorkoutPlan);
+            if (!usageCheck.Allowed) return DeniedResult(usageCheck);
 
             var result = await _aiService.GenerateWorkoutPlanAsync(userId, dto);
             return Ok(result);
@@ -167,11 +217,18 @@ public class AIController : ControllerBase
             });
         }
 
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var usageCheck = await _aiUsageService.CheckAndReserveAsync(userId, AiFeature.AnalyzeImage);
+        if (!usageCheck.Allowed) return DeniedResult(usageCheck);
+
         await using var stream = image.OpenReadStream();
 
         try
         {
             var result = await _aiService.AnalyzeImageAsync(
+                userId,
                 stream,
                 image.ContentType,
                 mode);
@@ -225,11 +282,18 @@ public class AIController : ControllerBase
             });
         }
 
+        var userId = CurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var usageCheck = await _aiUsageService.CheckAndReserveAsync(userId, AiFeature.AnalyzeFormVideo);
+        if (!usageCheck.Allowed) return DeniedResult(usageCheck);
+
         try
         {
             await using var stream = video.OpenReadStream();
 
             var result = await _aiService.AnalyzeFormVideoAsync(
+                userId,
                 stream,
                 video.FileName,
                 video.ContentType);

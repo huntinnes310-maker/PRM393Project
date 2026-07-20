@@ -1,0 +1,11 @@
+services:
+  api:
+    build: .
+    image: ghcr.io/phung052004/gymsupport-api:latest
+    restart: unless-stopped
+    env_file:
+      - /etc/gymsupport.env
+    ports:
+      - "127.0.0.1:5028:8080"
+    volumes:
+      - /opt/gymsupport/secrets/gym-support-sa.json:/opt/gymsupport/secrets/gym-support-sa.json:ro

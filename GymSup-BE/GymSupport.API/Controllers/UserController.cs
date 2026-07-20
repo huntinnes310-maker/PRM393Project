@@ -11,7 +11,7 @@ namespace GymSupport.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Admin,Manager")]
+    //[Authorize]
     public class UserController : ControllerBase
     {
         private readonly IUserRepository _userRepository;
@@ -54,7 +54,6 @@ namespace GymSupport.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(string id, [FromBody] UpdateUserRequest request)
         {
             var user = await _userRepository.GetByIdAsync(id);
@@ -78,7 +77,6 @@ namespace GymSupport.API.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(string id)
         {
             var user = await _userRepository.GetByIdAsync(id);
@@ -90,7 +88,6 @@ namespace GymSupport.API.Controllers
         }
 
         [HttpPut("{id}/activate")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Activate(string id)
         {
             var user = await _userRepository.GetByIdAsync(id);
@@ -103,7 +100,6 @@ namespace GymSupport.API.Controllers
         }
 
         [HttpPut("{id}/deactivate")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Deactivate(string id)
         {
             var user = await _userRepository.GetByIdAsync(id);

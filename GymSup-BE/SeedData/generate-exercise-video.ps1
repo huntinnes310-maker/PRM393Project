@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ExerciseName = "Barbell Bench Press",
-    [string]$ApiBaseUrl = "https://api.gsfitness.xyz",
+    [string]$ApiBaseUrl = "https://api.gsfitness.id.vn",
     [string]$SeedPath,
     [string]$OutputDirectory,
     [ValidateSet("sora-2", "sora-2-pro")]

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ApiBaseUrl = "https://api.gsfitness.xyz",
+    [string]$ApiBaseUrl = "https://api.gsfitness.id.vn",
     [Parameter(Mandatory = $true)]
     [string]$AdminEmail,
     [string]$ImageDirectory,

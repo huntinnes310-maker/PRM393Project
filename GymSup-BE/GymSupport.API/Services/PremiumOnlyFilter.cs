@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using GymSupport.Repository.Interfaces;
+using GymSupport.Service.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -7,11 +7,11 @@ namespace GymSupport.API.Services;
 
 public sealed class PremiumOnlyFilter : IAsyncActionFilter
 {
-    private readonly IUserSubscriptionRepository _subscriptionRepository;
+    private readonly ISubscriptionService _subscriptionService;
 
-    public PremiumOnlyFilter(IUserSubscriptionRepository subscriptionRepository)
+    public PremiumOnlyFilter(ISubscriptionService subscriptionService)
     {
-        _subscriptionRepository = subscriptionRepository;
+        _subscriptionService = subscriptionService;
     }
 
     public async Task OnActionExecutionAsync(
@@ -27,11 +27,10 @@ public sealed class PremiumOnlyFilter : IAsyncActionFilter
             return;
         }
 
-        var subscription = await _subscriptionRepository.GetByUserIdAsync(userId);
-        var isPremium = subscription != null &&
-            subscription.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
-            subscription.Price > 0 &&
-            (!subscription.ExpiredAt.HasValue || subscription.ExpiredAt > DateTime.UtcNow);
+        // Cùng một nguồn sự thật với /api/subscriptions/me — tránh 2 định nghĩa
+        // "premium" lệch nhau giữa filter này và SubscriptionService.
+        var subscription = await _subscriptionService.GetUserCurrentSubscriptionAsync(userId);
+        var isPremium = subscription?.IsPremium ?? false;
 
         if (!isPremium)
         {

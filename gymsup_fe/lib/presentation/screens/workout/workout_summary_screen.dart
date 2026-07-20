@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/finish_workout_result.dart';
+import 'workout_evaluation_screen.dart';
 
 /// Màn hình tổng kết sau khi hoàn thành buổi tập.
 class WorkoutSummaryScreen extends StatelessWidget {
@@ -20,7 +21,11 @@ class WorkoutSummaryScreen extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 20),
-            const Icon(Icons.emoji_events, color: AppColors.goldBadge, size: 72),
+            const Icon(
+              Icons.emoji_events,
+              color: AppColors.goldBadge,
+              size: 72,
+            ),
             const SizedBox(height: 16),
             const Text(
               'Hoàn thành buổi tập! 🎉',
@@ -30,11 +35,23 @@ class WorkoutSummaryScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(child: _StatTile(label: 'Thời gian', value: '$minutes phút')),
+                Expanded(
+                  child: _StatTile(label: 'Thời gian', value: '$minutes phút'),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: _StatTile(label: 'Tổng số set', value: '${session.totalSets}')),
+                Expanded(
+                  child: _StatTile(
+                    label: 'Tổng số set',
+                    value: '${session.totalSets}',
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: _StatTile(label: 'EXP nhận', value: '+${session.totalExpGained}')),
+                Expanded(
+                  child: _StatTile(
+                    label: 'EXP nhận',
+                    value: '+${session.totalExpGained}',
+                  ),
+                ),
               ],
             ),
             if (result.currentStreak > 0) ...[
@@ -48,7 +65,10 @@ class WorkoutSummaryScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.local_fire_department, color: AppColors.primary),
+                    const Icon(
+                      Icons.local_fire_department,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Chuỗi tập luyện: ${result.currentStreak} ngày',
@@ -83,23 +103,45 @@ class WorkoutSummaryScreen extends StatelessWidget {
             ],
             if (session.muscleExpGains.isNotEmpty) ...[
               const SizedBox(height: 20),
-              const Text('Tiến độ cơ bắp', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Text(
+                'Tiến độ cơ bắp',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
               const SizedBox(height: 10),
-              ...session.muscleExpGains.map((gain) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(gain.muscleName)),
-                        Text('+${gain.expGained} XP', style: const TextStyle(color: AppColors.primary)),
-                        if (gain.isLevelUp) ...[
-                          const SizedBox(width: 8),
-                          Text('Lv.${gain.oldLevel}→${gain.newLevel} 🎉'),
-                        ],
+              ...session.muscleExpGains.map(
+                (gain) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(gain.muscleName)),
+                      Text(
+                        '+${gain.expGained} XP',
+                        style: const TextStyle(color: AppColors.primary),
+                      ),
+                      if (gain.isLevelUp) ...[
+                        const SizedBox(width: 8),
+                        Text('Lv.${gain.oldLevel}→${gain.newLevel} 🎉'),
                       ],
-                    ),
-                  )),
+                    ],
+                  ),
+                ),
+              ),
             ],
-            const SizedBox(height: 28),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        WorkoutEvaluationScreen(sessionLogId: session.id),
+                  ),
+                ),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Xem đánh giá AI'),
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -131,9 +173,18 @@ class _StatTile extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          ),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
         ],
       ),
     );

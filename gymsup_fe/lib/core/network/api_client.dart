@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 
@@ -52,7 +53,11 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    final response = await http.post(url, headers: headers, body: jsonEncode(body));
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
     _checkUnauthorized(response, requireAuth);
     return response;
   }
@@ -65,7 +70,11 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    final response = await http.put(url, headers: headers, body: jsonEncode(body));
+    final response = await http.put(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
     _checkUnauthorized(response, requireAuth);
     return response;
   }
@@ -78,7 +87,11 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    final response = await http.patch(url, headers: headers, body: jsonEncode(body));
+    final response = await http.patch(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
     _checkUnauthorized(response, requireAuth);
     return response;
   }
@@ -101,6 +114,7 @@ class ApiClient {
     required String fileField,
     required List<int> fileBytes,
     required String filename,
+    String? contentType,
     Map<String, String> fields = const {},
     bool requireAuth = true,
   }) async {
@@ -110,7 +124,19 @@ class ApiClient {
     final request = http.MultipartRequest('POST', url)
       ..headers.addAll(headers)
       ..fields.addAll(fields)
-      ..files.add(http.MultipartFile.fromBytes(fileField, fileBytes, filename: filename));
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          fileField,
+          fileBytes,
+          filename: filename,
+          // Không set contentType thì package http mặc định gửi
+          // application/octet-stream, khiến backend luôn từ chối vì không
+          // khớp danh sách image/jpeg|png|webp - phải truyền đúng mimeType thật.
+          contentType: contentType != null
+              ? MediaType.parse(contentType)
+              : null,
+        ),
+      );
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     _checkUnauthorized(response, requireAuth);

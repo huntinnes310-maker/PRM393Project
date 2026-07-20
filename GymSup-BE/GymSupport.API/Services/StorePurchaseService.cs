@@ -70,22 +70,33 @@ public sealed class StorePurchaseService : IStorePurchaseService
 
         if (existing == null)
         {
-            await _payments.CreateAsync(new Payment
+            try
             {
-                UserId = userId,
-                PlanId = plan.Id,
-                PlanName = plan.Name,
-                Amount = plan.Price,
-                PaymentMethod = verified.PaymentMethod,
-                Status = "Paid",
-                OrderId = verified.OrderId,
-                RequestId = HashToken(request.VerificationData),
-                TransactionId = verified.TransactionId,
-                ProviderMessage = verified.Status,
-                PaidAt = verified.PurchasedAt,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
+                await _payments.CreateAsync(new Payment
+                {
+                    UserId = userId,
+                    PlanId = plan.Id,
+                    PlanName = plan.Name,
+                    Amount = plan.Price,
+                    PaymentMethod = verified.PaymentMethod,
+                    Status = "Paid",
+                    OrderId = verified.OrderId,
+                    RequestId = HashToken(request.VerificationData),
+                    TransactionId = verified.TransactionId,
+                    ProviderMessage = verified.Status,
+                    PaidAt = verified.PurchasedAt,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            catch (Exception)
+            {
+                // Một request verify song song có thể đã chèn Payment cho cùng
+                // OrderId (unique index chặn trùng). Nếu bản ghi đã tồn tại thì coi
+                // như thành công — verify là idempotent; nếu không thì ném lại lỗi.
+                var raced = await _payments.GetByOrderIdAsync(verified.OrderId);
+                if (raced == null) throw;
+            }
         }
 
         return new StorePurchaseResult(

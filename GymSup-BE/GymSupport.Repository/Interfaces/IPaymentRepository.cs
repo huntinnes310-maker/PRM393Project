@@ -8,7 +8,6 @@ namespace GymSupport.Repository.Interfaces
     {
         Task<Payment?> GetByIdAsync(string id);
         Task<Payment?> GetByOrderIdAsync(string orderId);
-        Task<Payment?> GetByOrderCodeAsync(long orderCode);
         Task<IEnumerable<Payment>> GetByUserIdAsync(string userId);
         Task<IEnumerable<Payment>> GetByCustomerIdAsync(string customerId);
         Task<IEnumerable<Payment>> GetAllAsync();

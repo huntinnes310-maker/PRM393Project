@@ -1,5 +1,4 @@
-using GymCoach.Api.Config;
-using GymSupport.Repository.Interfaces;
+﻿using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.AIModel;
 using GymSupport.Repository.Models.Entities;
 using GymSupport.Service.Interfaces;
@@ -9,7 +8,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using MongoDB.Driver;
 
 namespace GymSupport.Service.Services;
 
@@ -22,7 +20,7 @@ public class OpenAIService : IAIService
     private readonly IExerciseRepository _exerciseRepository;
     private readonly ICustomerRepository _customerRepository;
     private readonly IUserRepository _userRepository;
-    private readonly MongoDbContext _mongoContext;
+    private readonly IAiUsageService _aiUsageService;
 
     public OpenAIService(
      HttpClient httpClient,
@@ -32,7 +30,7 @@ public class OpenAIService : IAIService
      IExerciseRepository exerciseRepository,
      ICustomerRepository customerRepository,
      IUserRepository userRepository,
-     MongoDbContext mongoContext)
+     IAiUsageService aiUsageService)
     {
         _httpClient = httpClient;
         _configuration = configuration;
@@ -41,7 +39,20 @@ public class OpenAIService : IAIService
         _exerciseRepository = exerciseRepository;
         _customerRepository = customerRepository;
         _userRepository = userRepository;
-        _mongoContext = mongoContext;
+        _aiUsageService = aiUsageService;
+    }
+
+    private async Task RecordUsageAsync(string userId, AiFeature feature, string model, JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage))
+        {
+            return;
+        }
+
+        var promptTokens = usage.TryGetProperty("prompt_tokens", out var p) ? p.GetInt32() : 0;
+        var completionTokens = usage.TryGetProperty("completion_tokens", out var c) ? c.GetInt32() : 0;
+
+        await _aiUsageService.RecordCostAsync(userId, feature, model, promptTokens, completionTokens);
     }
 
     public async Task ApplySuggestionsAsync(ApplySuggestionsRequestDto dto)
@@ -188,51 +199,6 @@ public class OpenAIService : IAIService
                         rSession.Exercises.Remove(exToRemove); // Xóa khỏi danh sách
                         await _workoutRepository.UpdateAsync(rPlan); // Cập nhật lại vào MongoDB
                     }
-                    break;
-
-                case "add_meal":
-                    if (string.IsNullOrEmpty(suggestion.MealName) || suggestion.Calories <= 0) break;
-
-                    var mealCollection = _mongoContext.GetCollection<MealPlan>("MealPlans");
-                    var startOfDay = DateTime.UtcNow.Date;
-                    var endOfDay = startOfDay.AddDays(1).AddTicks(-1);
-
-                    var mealPlan = await mealCollection
-                        .Find(x => x.UserId == dto.UserId && x.Date >= startOfDay && x.Date <= endOfDay)
-                        .FirstOrDefaultAsync();
-
-                    if (mealPlan == null)
-                    {
-                        mealPlan = new MealPlan
-                        {
-                            Id = MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                            UserId = dto.UserId,
-                            Date = startOfDay,
-                            TotalCalories = 0,
-                            Protein = 0,
-                            Carbs = 0,
-                            Fat = 0,
-                            WaterLiters = 0.0,
-                            Meals = new List<MealItem>()
-                        };
-                    }
-
-                    mealPlan.TotalCalories += suggestion.Calories;
-                    mealPlan.Protein += suggestion.Protein;
-                    mealPlan.Carbs += suggestion.Carbs;
-                    mealPlan.Fat += suggestion.Fat;
-
-                    mealPlan.Meals.Add(new MealItem
-                    {
-                        Type = string.IsNullOrWhiteSpace(suggestion.MealType) ? "Snack" : suggestion.MealType,
-                        Name = suggestion.MealName,
-                        Calories = suggestion.Calories
-                    });
-
-                    await mealCollection.ReplaceOneAsync(
-                        x => x.UserId == mealPlan.UserId && x.Date >= startOfDay && x.Date <= endOfDay,
-                        mealPlan,
-                        new ReplaceOptions { IsUpsert = true });
                     break;
 
                 default:
@@ -412,6 +378,7 @@ VALID_EXERCISES:
 
         var result = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(result);
+        await RecordUsageAsync(userId, AiFeature.GenerateWorkoutPlan, "gpt-4o-mini", document.RootElement);
         var aiContent = document.RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
@@ -550,7 +517,7 @@ PHONG CÁCH TRÒ CHUYỆN:
 - Có thể chào hỏi, pha chút hài hước phù hợp, động viên, hỏi thăm và tán gẫu tự nhiên. Hãy bắt nhịp cách xưng hô, độ dài và năng lượng của người dùng.
 - Không ép mọi cuộc trò chuyện quay về gym. Với câu hỏi đời thường, hãy trả lời hữu ích trong khả năng của mình; nếu không chắc, nói rõ thay vì bịa.
 - Khi người dùng chỉ trò chuyện, hỏi kiến thức hoặc xin gợi ý, luôn trả `suggestions: []`; tuyệt đối không tác động database.
-- Chỉ sinh `suggestions` khi người dùng xác nhận rõ ràng rằng họ muốn lưu/áp dụng thay đổi lịch tập hoặc ghi nhận món ăn/bữa ăn vào hệ thống. Việc lưu sẽ được hệ thống kiểm tra quyền Premium riêng.
+- Chỉ sinh `suggestions` khi người dùng xác nhận rõ ràng rằng họ muốn lưu/áp dụng thay đổi lịch tập vào hệ thống. Việc lưu sẽ được hệ thống kiểm tra quyền Premium riêng.
 - Không chẩn đoán bệnh hoặc thay thế bác sĩ. Khi có dấu hiệu nguy hiểm, đau nặng hay kéo dài, khuyên người dùng gặp chuyên gia y tế.
 
 =========================================
@@ -575,18 +542,6 @@ Khi người dùng yêu cầu xóa một bài tập (Ví dụ: "Xóa bài Bench 
    --> TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý chọn một buổi để xóa, cũng KHÔNG ĐƯỢC tự ý xóa hết. Mảng `suggestions` bắt buộc phải để rỗng `[]`.
    --> Bạn phải đưa câu hỏi xác nhận rõ ràng ở trường `response`: "Dạ, em thấy bài [Tên bài] đang có mặt ở cả lịch tập [Thứ A] và [Thứ B]. Anh/Chị muốn xóa bài này ở riêng một buổi cụ thể nào hay muốn xóa hoàn toàn khỏi tất cả các buổi ạ?"
    --> CHỈ KHI NÀO người dùng phản hồi rõ ràng (Ví dụ: "Xóa ở Thứ 2 thôi" hoặc "Xóa hết đi em") thì ở lượt chat kế tiếp bạn mới được sinh hành động 'remove_exercise' tương ứng với lựa chọn của họ.
-
------------------------------------------
-HÀNH ĐỘNG 3: THÊM BỮA ĂN MỚI (ADD MEAL)
-Khi người dùng nói muốn thêm hoặc ghi nhận một món ăn/bữa ăn (Ví dụ: "Sáng nay anh ăn 2 quả trứng và 1 quả chuối" hoặc "Ghi nhận giúp anh bữa trưa ăn 200g ức gà + 1 bát cơm"):
-1. Bạn PHẢI tự động nhận diện và tính toán/ước lượng các chỉ số dinh dưỡng cho bữa ăn đó:
-   - `mealType`: "Breakfast" (nếu ăn buổi sáng/bữa sáng), "Lunch" (buổi trưa/bữa trưa), "Dinner" (buổi tối/bữa tối), "Snack" (nếu là bữa nhẹ/bữa xế hoặc không nói rõ bữa nào).
-   - `mealName`: Tên các món ăn kết hợp lại (Ví dụ: "2 Trứng ốp + 1 Chuối" hoặc "200g Ức gà + 1 Bát cơm").
-   - `calories`: Tổng lượng calo ước tính của bữa ăn (số nguyên, ví dụ: 350).
-   - `protein`: Tổng lượng protein ước tính bằng gram (số nguyên, ví dụ: 25).
-   - `carbs`: Tổng lượng carbohydrate ước tính bằng gram (số nguyên, ví dụ: 40).
-   - `fat`: Tổng lượng chất béo ước tính bằng gram (số nguyên, ví dụ: 12).
-2. Khi người dùng xác nhận muốn lưu hoặc yêu cầu ghi nhận, hãy sinh hành động `add_meal` vào mảng `suggestions` với các giá trị đã ước lượng.
 =========================================
 QUY TẮC ĐỒNG BỘ NGÔN NGỮ NGÀY THÁNG (BẮT BUỘC):
 - Dữ liệu hệ thống lưu tên thứ bằng tiếng Anh: "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday".
@@ -723,7 +678,7 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
                                     type = "object",
                                     properties = new
                                     {
-                                        action = new { type = "string", description = "Tên hành động tác động DB. Dùng create_plan, create_session, add_exercise, remove_exercise, update_exercise hoặc add_meal." },
+                                        action = new { type = "string", description = "Tên hành động tác động DB." },
                                         planId = new { type = "string", description = "Mã ID thật của Plan lấy từ database hoặc {planId}." },
                                         sessionId = new { type = "string", description = "Mã ID thật của Session lấy từ database hoặc dạng {sessionId_Day}." },
                                         exerciseId = new { type = "string", description = "Mã ID thật của bài tập lấy từ database." },
@@ -735,19 +690,9 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
                                         focus = new { type = "string", description = "Nhóm cơ tiêu điểm của buổi tập." },
                                         sets = new { type = "integer", description = "Số sets tập." },
                                         reps = new { type = "string", description = "Số reps tập." },
-                                        notes = new { type = "string", description = "Ghi chú thêm." },
-                                        mealType = new { type = "string", description = "Loại bữa ăn: Breakfast, Lunch, Dinner hoặc Snack." },
-                                        mealName = new { type = "string", description = "Tên món ăn." },
-                                        calories = new { type = "integer", description = "Lượng calo." },
-                                        protein = new { type = "integer", description = "Lượng đạm gram." },
-                                        carbs = new { type = "integer", description = "Lượng carb gram." },
-                                        fat = new { type = "integer", description = "Lượng béo gram." }
+                                        notes = new { type = "string", description = "Ghi chú thêm." }
                                     },
-                                    required = new[] { 
-                                        "action", "planId", "sessionId", "exerciseId", "planName", "goal", 
-                                        "planDescription", "daysPerWeek", "dayOfWeek", "focus", "sets", "reps", "notes",
-                                        "mealType", "mealName", "calories", "protein", "carbs", "fat"
-                                    },
+                                    required = new[] { "action", "planId", "sessionId", "exerciseId", "planName", "goal", "planDescription", "daysPerWeek", "dayOfWeek", "focus", "sets", "reps", "notes" },
                                     additionalProperties = false
                                 }
                             }
@@ -767,26 +712,12 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync();
-            if (error.Contains("insufficient_quota") || error.Contains("invalid_api_key") || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                var demoReply = $"[Chế độ Demo - Tài khoản hết số dư] Chào bạn! Tôi là trợ lý ảo GymSup AI Coach. Hiện tại tài khoản OpenAI của bạn đã hết số dư khả dụng (lỗi `insufficient_quota`).\n\nTuy nhiên, để bạn không bị gián đoạn trải nghiệm, tôi đã kích hoạt chế độ Demo. Bạn vừa hỏi: \"{message}\".\n\n💡 Lời khuyên tập luyện: Để cải thiện sức khỏe toàn diện, hãy uống đủ nước, ngủ từ 7-8 tiếng mỗi ngày và duy trì chế độ ăn giàu protein nhé! Chúc bạn tập luyện vui vẻ! 💪";
-                
-                var demoResult = new ChatResponseDto
-                {
-                    Response = demoReply,
-                    Suggestions = new List<AISuggestionDto>()
-                };
-
-                await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "user", Content = message });
-                await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "assistant", Content = demoReply });
-
-                return demoResult;
-            }
             throw new Exception($"OpenAI Error: {error}");
         }
 
         var result = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(result);
+        await RecordUsageAsync(userId, AiFeature.Chat, "gpt-4o-mini", document.RootElement);
         var aiContent = document.RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
@@ -838,6 +769,7 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
     }
 
     public async Task<ImageAnalyzeResponseDto> AnalyzeImageAsync(
+    string userId,
     Stream imageStream,
     string contentType,
     string mode)
@@ -1099,6 +1031,7 @@ Trả về JSON đúng schema.
         var result = await response.Content.ReadAsStringAsync();
 
         using var document = JsonDocument.Parse(result);
+        await RecordUsageAsync(userId, AiFeature.AnalyzeImage, "gpt-4.1-mini", document.RootElement);
 
         var aiContent = document.RootElement
             .GetProperty("choices")[0]
@@ -1136,6 +1069,7 @@ Trả về JSON đúng schema.
         };
     }
     public async Task<VideoFormAnalyzeResponseDto> AnalyzeFormVideoAsync(
+    string userId,
     Stream videoStream,
     string fileName,
     string contentType)
@@ -1195,7 +1129,7 @@ Trả về JSON đúng schema.
                 throw new Exception("Không thể trích xuất frame từ video.");
             }
 
-            return await AnalyzeFramesWithOpenAIAsync(frameFiles);
+            return await AnalyzeFramesWithOpenAIAsync(userId, frameFiles);
         }
         finally
         {
@@ -1206,10 +1140,11 @@ Trả về JSON đúng schema.
         }
     }
     private async Task<VideoFormAnalyzeResponseDto> AnalyzeFramesWithOpenAIAsync(
+    string userId,
     List<string> frameFiles)
     {
         var apiKey = _configuration["OpenAI:ApiKey"];
- 
+
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new Exception("OpenAI API key is missing.");
@@ -1430,6 +1365,7 @@ Trả về JSON đúng schema.
         var result = await response.Content.ReadAsStringAsync();
 
         using var document = JsonDocument.Parse(result);
+        await RecordUsageAsync(userId, AiFeature.AnalyzeFormVideo, "gpt-4.1-mini", document.RootElement);
 
         var aiContent = document.RootElement
             .GetProperty("choices")[0]
@@ -1550,6 +1486,125 @@ Trả về JSON đúng schema.
         }
 
         return analysis;
+    }
+
+    public async Task<WorkoutEvaluationNarrativeDto> EvaluateWorkoutAsync(
+        string userId,
+        WorkoutEvaluationMetricsDto metrics)
+    {
+        var apiKey = _configuration["OpenAI:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new Exception("OpenAI API key is missing.");
+        }
+
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", apiKey);
+
+        var metricsJson = JsonSerializer.Serialize(metrics, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var messages = new List<object>
+        {
+            new
+            {
+                role = "system",
+                content =
+"""
+Bạn là AI Coach viết nhận xét ngắn gọn cho báo cáo buổi tập. Toàn bộ số liệu
+(score, grade, summary, highlights, improvements, recovery, dinh dưỡng, streak)
+ĐÃ được tính toán chính xác sẵn - TUYỆT ĐỐI không tự tính lại, không bịa thêm số liệu mới.
+Nhiệm vụ của bạn CHỈ là viết 4 đoạn văn ngắn, tự nhiên, cá nhân hoá dựa đúng trên
+các số liệu được cung cấp:
+- narrativeSummary: 2-3 câu tóm tắt buổi tập, nêu bật điểm số/hạng và PHẢI nhắc tới nội dung trong comparisonSummary (so với lần trước tập cùng buổi) một cách tự nhiên.
+- mealSuggestion: 1 câu gợi ý bữa ăn phục hồi cụ thể (món ăn thật, không chung chung), dựa trên lượng protein/nước đã tính.
+- suggestedNextWorkout: 1 câu gợi ý buổi tập tiếp theo, ưu tiên dùng gợi ý buổi kế hoạch nếu có, hoặc dựa vào tình trạng phục hồi nhóm cơ.
+- motivationalMessage: 1-2 câu động viên chân thành, nhắc tới số liệu thật (streak, điểm số...) thay vì lời khen chung chung.
+Không chẩn đoán y tế. Trả lời bằng tiếng Việt, giọng văn ấm áp như bạn tập gym.
+"""
+            },
+            new
+            {
+                role = "user",
+                content = $"Số liệu buổi tập:\n{metricsJson}"
+            }
+        };
+
+        var requestBody = new
+        {
+            model = "gpt-4o-mini",
+            messages,
+            temperature = 0.6,
+            max_tokens = 500,
+            response_format = new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+                    name = "workout_evaluation_narrative",
+                    strict = true,
+                    schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            narrativeSummary = new { type = "string" },
+                            mealSuggestion = new { type = "string" },
+                            suggestedNextWorkout = new { type = "string" },
+                            motivationalMessage = new { type = "string" }
+                        },
+                        required = new[] { "narrativeSummary", "mealSuggestion", "suggestedNextWorkout", "motivationalMessage" },
+                        additionalProperties = false
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(requestBody);
+        var response = await _httpClient.PostAsync(
+            "https://api.openai.com/v1/chat/completions",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"OpenAI Error: {error}");
+        }
+
+        var result = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(result);
+        await RecordUsageAsync(userId, AiFeature.EvaluateWorkout, "gpt-4o-mini", document.RootElement);
+
+        var aiContent = document.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
+
+        var fallback = new WorkoutEvaluationNarrativeDto
+        {
+            NarrativeSummary = $"Bạn đạt {metrics.Score} điểm ({metrics.Grade}) cho buổi tập {metrics.Focus}.",
+            MealSuggestion = "Bổ sung đạm nạc và rau xanh sau buổi tập.",
+            SuggestedNextWorkout = metrics.NextPlannedSession ?? "Nghỉ ngơi hoặc tập nhẹ nhàng nhóm cơ khác.",
+            MotivationalMessage = "Tiếp tục duy trì phong độ này nhé!"
+        };
+
+        if (string.IsNullOrWhiteSpace(aiContent))
+        {
+            return fallback;
+        }
+
+        var narrative = JsonSerializer.Deserialize<WorkoutEvaluationNarrativeDto>(
+            aiContent,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true
+            });
+
+        return narrative ?? fallback;
     }
 
 }

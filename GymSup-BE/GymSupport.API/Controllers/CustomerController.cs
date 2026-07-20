@@ -14,19 +14,11 @@ namespace GymSupport.API.Controllers
     {
         private readonly ICustomerRepository _customerRepository;
         private readonly IUserRepository _userRepository;
-        private readonly IWorkoutPlanRepository _workoutPlanRepository;
-        private readonly IExerciseRepository _exerciseRepository;
 
-        public CustomerController(
-            ICustomerRepository customerRepository, 
-            IUserRepository userRepository,
-            IWorkoutPlanRepository workoutPlanRepository,
-            IExerciseRepository exerciseRepository)
+        public CustomerController(ICustomerRepository customerRepository, IUserRepository userRepository)
         {
             _customerRepository = customerRepository;
             _userRepository = userRepository;
-            _workoutPlanRepository = workoutPlanRepository;
-            _exerciseRepository = exerciseRepository;
         }
 
         [HttpGet("user/{userId}")]
@@ -36,7 +28,7 @@ namespace GymSupport.API.Controllers
             if (currentUser == null)
                 return Forbid();
 
-            if (currentUser.Id != userId && currentUser.Role != "Admin" && currentUser.Role != "Manager")
+            if (currentUser.Id != userId && currentUser.Role != "Admin")
                 return Forbid();
 
             var customer = await _customerRepository.GetByUserIdAsync(userId);
@@ -94,13 +86,6 @@ namespace GymSupport.API.Controllers
             customer.Bmi = CalculateBmi(customer.WeightKg, customer.HeightCm);
 
             await _customerRepository.CreateAsync(customer);
-
-            // Tự động sinh lịch tập mặc định nếu chưa có
-            if (!string.IsNullOrWhiteSpace(customer.Goal))
-            {
-                await GenerateDefaultPlanIfNeededAsync(customer.UserId, customer.Goal);
-            }
-
             return CreatedAtAction(nameof(GetByUserId), new { userId = customer.UserId }, customer);
         }
 
@@ -142,113 +127,7 @@ namespace GymSupport.API.Controllers
                 customer.InjuryNotes = request.InjuryNotes;
 
             await _customerRepository.UpdateAsync(customer);
-
-            // Tự động sinh lịch tập mặc định nếu chưa có
-            if (!string.IsNullOrWhiteSpace(customer.Goal))
-            {
-                await GenerateDefaultPlanIfNeededAsync(customer.UserId, customer.Goal);
-            }
-
             return NoContent();
-        }
-
-        private async Task GenerateDefaultPlanIfNeededAsync(string userId, string goal)
-        {
-            try
-            {
-                var existingPlans = await _workoutPlanRepository.GetByUserIdAsync(userId);
-                if (existingPlans != null && existingPlans.Any())
-                    return; // Đã có lịch tập rồi, không sinh nữa
-
-                var plan = new WorkoutPlan
-                {
-                    UserId = userId,
-                    Name = GetPlanNameForGoal(goal),
-                    Goal = goal,
-                    Description = "Lịch tập 3 buổi mỗi tuần được thiết lập tự động dựa trên mục tiêu thể trạng của bạn.",
-                    DaysPerWeek = 3,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
-                    Sessions = new List<WorkoutSession>()
-                };
-
-                var allExercises = (await _exerciseRepository.GetAllAsync()).ToList();
-
-                // Thứ 2: Ngực & Tay sau
-                var monSession = new WorkoutSession
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    DayOfWeek = "Monday",
-                    Focus = "Ngực & Tay sau",
-                    Exercises = new List<ExerciseInSession>()
-                };
-                AddExerciseToSession(monSession, allExercises, "Barbell Bench Press", 4, "8-10");
-                AddExerciseToSession(monSession, allExercises, "Incline Dumbbell Press", 3, "10-12");
-                AddExerciseToSession(monSession, allExercises, "Push-Up", 3, "12-15");
-                AddExerciseToSession(monSession, allExercises, "Rope Pushdown", 3, "12-15");
-                plan.Sessions.Add(monSession);
-
-                // Thứ 4: Lưng xô & Tay trước
-                var wedSession = new WorkoutSession
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    DayOfWeek = "Wednesday",
-                    Focus = "Lưng xô & Tay trước",
-                    Exercises = new List<ExerciseInSession>()
-                };
-                AddExerciseToSession(wedSession, allExercises, "Pull-Up", 4, "6-10");
-                AddExerciseToSession(wedSession, allExercises, "Wide-Grip Lat Pulldown", 3, "10-12");
-                AddExerciseToSession(wedSession, allExercises, "Barbell Bent-Over Row", 3, "8-10");
-                AddExerciseToSession(wedSession, allExercises, "Barbell Curl", 3, "10-12");
-                plan.Sessions.Add(wedSession);
-
-                // Thứ 6: Chân & Vai
-                var friSession = new WorkoutSession
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    DayOfWeek = "Friday",
-                    Focus = "Chân & Vai",
-                    Exercises = new List<ExerciseInSession>()
-                };
-                AddExerciseToSession(friSession, allExercises, "Barbell Overhead Press", 4, "8-10");
-                AddExerciseToSession(friSession, allExercises, "Dumbbell Lateral Raise", 3, "12-15");
-                AddExerciseToSession(friSession, allExercises, "Conventional Deadlift", 3, "5-8");
-                plan.Sessions.Add(friSession);
-
-                await _workoutPlanRepository.CreateAsync(plan);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"--> Error generating default plan: {ex.Message}");
-            }
-        }
-
-        private static string GetPlanNameForGoal(string goal)
-        {
-            var lowerGoal = goal?.ToLowerInvariant() ?? "";
-            if (lowerGoal.Contains("muscle") || lowerGoal.Contains("tăng cơ"))
-                return "Kế hoạch Xây dựng Cơ bắp (3 ngày/tuần)";
-            if (lowerGoal.Contains("lose") || lowerGoal.Contains("giảm mỡ") || lowerGoal.Contains("fat"))
-                return "Kế hoạch Siết cơ Giảm mỡ (3 ngày/tuần)";
-            if (lowerGoal.Contains("strength") || lowerGoal.Contains("sức mạnh"))
-                return "Kế hoạch Tăng Sức mạnh Powerlifting";
-            return "Lịch tập Toàn thân Tổng hợp";
-        }
-
-        private static void AddExerciseToSession(WorkoutSession session, List<Exercise> allExercises, string name, int sets, string reps)
-        {
-            var exercise = allExercises.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (exercise != null)
-            {
-                session.Exercises.Add(new ExerciseInSession
-                {
-                    ExerciseId = exercise.Id,
-                    ExerciseName = exercise.Name,
-                    Sets = sets,
-                    Reps = reps,
-                    Notes = "Thực hiện đúng kỹ thuật, chú ý nhịp thở."
-                });
-            }
         }
 
         private async Task<User?> GetActiveUserAsync()
