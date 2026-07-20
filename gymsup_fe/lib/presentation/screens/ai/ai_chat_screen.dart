@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/ai_usage_provider.dart';
 import 'generate_plan_screen.dart';
 import 'scan_equipment_screen.dart';
 
@@ -142,7 +143,8 @@ class AiChatScreen extends StatefulWidget {
   State<AiChatScreen> createState() => _AiChatScreenState();
 }
 
-class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderStateMixin {
+class _AiChatScreenState extends State<AiChatScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   static const _aiPrimary = Color(0xFF9185FF);
   static const _aiAccent = Color(0xFF56D6C9);
@@ -169,6 +171,7 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
     _tabController = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadChatHistory();
+      context.read<AiUsageProvider>().refresh();
     });
   }
 
@@ -181,9 +184,9 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
   }
 
   Future<void> _openScanEquipment() async {
-    final result = await Navigator.of(context).push<Map>(
-      MaterialPageRoute(builder: (_) => const ScanEquipmentScreen()),
-    );
+    final result = await Navigator.of(
+      context,
+    ).push<Map>(MaterialPageRoute(builder: (_) => const ScanEquipmentScreen()));
     if (result == null) return;
     final text = result['text']?.toString() ?? '';
     if (text.isNotEmpty) {
@@ -278,6 +281,23 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
             ),
           );
         });
+      } else if (res.statusCode == 429 || res.statusCode == 403) {
+        String errorMsg = 'Bạn đã hết lượt dùng tính năng này lúc này.';
+        try {
+          final data = ApiClient.decodeResponse(res);
+          if (data is Map && data['message'] != null) {
+            errorMsg = data['message'].toString();
+          }
+        } catch (_) {}
+        setState(() {
+          _messages.add(
+            ChatMessageModel(
+              role: 'assistant',
+              content: errorMsg,
+              createdAt: DateTime.now(),
+            ),
+          );
+        });
       } else {
         String errorMsg =
             'Xin lỗi, tôi gặp sự cố kết nối. Hãy thử lại sau ít phút!';
@@ -312,6 +332,7 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
         _isThinking = false;
       });
       _scrollToBottom();
+      if (mounted) context.read<AiUsageProvider>().refresh();
     }
   }
 
@@ -439,6 +460,25 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    Consumer<AiUsageProvider>(
+                      builder: (context, usage, _) {
+                        final chat = usage.status?.chat;
+                        if (chat == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            '· ${chat.used}/${chat.limit} lượt hôm nay',
+                            style: GoogleFonts.outfit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: chat.isExhausted
+                                  ? AppColors.error
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ],
@@ -469,10 +509,7 @@ class _AiChatScreenState extends State<AiChatScreen> with SingleTickerProviderSt
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildChatTab(),
-          const GeneratePlanScreen(embedded: true),
-        ],
+        children: [_buildChatTab(), const GeneratePlanScreen(embedded: true)],
       ),
     );
   }

@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../providers/profile_provider.dart';
+import '../../../providers/ai_usage_provider.dart';
+import '../../widgets/ai/premium_feature_gate.dart';
 import '../../widgets/onboarding/step_indicator.dart';
 
 /// Màn hình AI tự tạo lịch tập, đi từng bước (wizard) thay vì một form dài.
@@ -73,7 +75,10 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prefillFromProfile());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prefillFromProfile();
+      context.read<AiUsageProvider>().refresh();
+    });
   }
 
   void _prefillFromProfile() {
@@ -122,6 +127,23 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
         'healthIssues': _healthController.text.trim(),
       });
 
+      if (response.statusCode == 403) {
+        final data = ApiClient.decodeResponse(response);
+        final msg = data is Map ? data['message']?.toString() : null;
+        if (mounted) _showVipUpsellDialog(msg);
+        return;
+      }
+
+      if (response.statusCode == 429) {
+        final data = ApiClient.decodeResponse(response);
+        setState(() {
+          _error = data is Map
+              ? (data['message']?.toString() ?? 'Bạn đã dùng hết lượt hôm nay.')
+              : 'Bạn đã dùng hết lượt hôm nay.';
+        });
+        return;
+      }
+
       if (response.statusCode != 200) {
         final data = ApiClient.decodeResponse(response);
         throw Exception(
@@ -150,6 +172,7 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
       setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+      if (mounted) context.read<AiUsageProvider>().refresh();
     }
   }
 
@@ -183,7 +206,7 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
     }
   }
 
-  void _showVipUpsellDialog() {
+  void _showVipUpsellDialog([String? message]) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -193,9 +216,10 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
           'Hội Viên VIP 👑',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text(
-          'Tính năng tự động lưu lịch tập từ AI chỉ dành cho Hội viên VIP.',
-          style: TextStyle(fontSize: 14, height: 1.4),
+        content: Text(
+          message ??
+              'Tính năng tự động lưu lịch tập từ AI chỉ dành cho Hội viên VIP.',
+          style: const TextStyle(fontSize: 14, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -210,8 +234,34 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<ProfileProvider>().profile;
+    final usageStatus = context.watch<AiUsageProvider>().status;
+    final usageLoading = context.watch<AiUsageProvider>().isLoading;
 
-    final content = Column(
+    Widget content;
+    if (usageStatus == null && usageLoading) {
+      content = const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    } else if (usageStatus != null && !usageStatus.isPremium) {
+      content = const PremiumFeatureGate(
+        title: 'Tạo lịch tập bằng AI là tính năng Premium',
+        description:
+            'Nâng cấp Premium để AI tự động thiết kế lịch tập cá nhân hoá theo mục tiêu, kinh nghiệm và lịch trình của bạn.',
+      );
+    } else {
+      content = _buildWizard(profile);
+    }
+
+    return widget.embedded
+        ? content
+        : Scaffold(
+            appBar: AppBar(title: const Text('AI tạo lịch tập')),
+            body: content,
+          );
+  }
+
+  Widget _buildWizard(profile) {
+    return Column(
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(20, widget.embedded ? 10 : 16, 20, 4),
@@ -219,6 +269,28 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
             currentStep: _currentStep + 1,
             totalSteps: _totalSteps,
           ),
+        ),
+        Consumer<AiUsageProvider>(
+          builder: (context, usage, _) {
+            final generate = usage.status?.generate;
+            if (generate == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Tạo lịch AI: ${generate.used}/${generate.limit} lượt hôm nay',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: generate.isExhausted
+                        ? AppColors.error
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
         Expanded(
           child: PageView(
@@ -312,13 +384,6 @@ class _GeneratePlanScreenState extends State<GeneratePlanScreen> {
         _buildNavBar(),
       ],
     );
-
-    return widget.embedded
-        ? content
-        : Scaffold(
-            appBar: AppBar(title: const Text('AI tạo lịch tập')),
-            body: content,
-          );
   }
 
   Widget _buildNavBar() {

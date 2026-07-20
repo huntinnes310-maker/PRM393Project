@@ -4,6 +4,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 
 class ApiClient {
+  /// Gọi khi bất kỳ request nào trả về 401 (token thiếu/hết hạn) - đăng ký
+  /// một lần ở main.dart để tự động đăng xuất và điều hướng về màn đăng nhập,
+  /// thay vì để mỗi màn hình tự hiện thông báo lỗi kết nối chung chung.
+  static void Function()? onUnauthorized;
+
+  void _checkUnauthorized(http.Response response, bool requireAuth) {
+    // Chỉ coi là "phiên hết hạn" khi request này lẽ ra phải có token
+    // (login/register dùng requireAuth:false nên sai mật khẩu không kích hoạt đăng xuất).
+    if (requireAuth && response.statusCode == 401) {
+      onUnauthorized?.call();
+    }
+  }
+
   // Lấy JWT token từ shared preferences
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -26,7 +39,9 @@ class ApiClient {
   Future<http.Response> get(String endpoint, {bool requireAuth = true}) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    return await http.get(url, headers: headers);
+    final response = await http.get(url, headers: headers);
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // --- POST ---
@@ -37,7 +52,9 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    return await http.post(url, headers: headers, body: jsonEncode(body));
+    final response = await http.post(url, headers: headers, body: jsonEncode(body));
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // --- PUT ---
@@ -48,7 +65,9 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    return await http.put(url, headers: headers, body: jsonEncode(body));
+    final response = await http.put(url, headers: headers, body: jsonEncode(body));
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // --- PATCH ---
@@ -59,7 +78,9 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    return await http.patch(url, headers: headers, body: jsonEncode(body));
+    final response = await http.patch(url, headers: headers, body: jsonEncode(body));
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // --- DELETE ---
@@ -69,7 +90,9 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(requireAuth: requireAuth);
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
-    return await http.delete(url, headers: headers);
+    final response = await http.delete(url, headers: headers);
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // --- POST multipart (upload file, vd: ảnh/video cho AI phân tích) ---
@@ -89,7 +112,9 @@ class ApiClient {
       ..fields.addAll(fields)
       ..files.add(http.MultipartFile.fromBytes(fileField, fileBytes, filename: filename));
     final streamed = await request.send();
-    return http.Response.fromStream(streamed);
+    final response = await http.Response.fromStream(streamed);
+    _checkUnauthorized(response, requireAuth);
+    return response;
   }
 
   // Helper: decode response body sang dynamic (có thể là Map hoặc List)

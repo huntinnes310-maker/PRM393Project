@@ -10,20 +10,27 @@ import 'providers/payment_provider.dart';
 import 'providers/onboarding_provider.dart';
 import 'providers/workout_plan_provider.dart';
 import 'providers/workout_session_provider.dart';
+import 'providers/ai_usage_provider.dart';
+import 'core/network/api_client.dart';
 import 'routes/app_router.dart';
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()..checkAuthStatus()),
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider()..checkAuthStatus(),
+        ),
         ChangeNotifierProvider(create: (_) => HomeProvider()),
         ChangeNotifierProvider(create: (_) => ExerciseProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
-        ChangeNotifierProvider(create: (_) => PaymentProvider()..fetchMySubscription()),
+        ChangeNotifierProvider(
+          create: (_) => PaymentProvider()..fetchMySubscription(),
+        ),
         ChangeNotifierProvider(create: (_) => OnboardingProvider()),
         ChangeNotifierProvider(create: (_) => WorkoutPlanProvider()),
         ChangeNotifierProvider(create: (_) => WorkoutSessionProvider()),
+        ChangeNotifierProvider(create: (_) => AiUsageProvider()),
       ],
       child: const GymSupApp(),
     ),
@@ -45,6 +52,12 @@ class _GymSupAppState extends State<GymSupApp> {
     super.initState();
     final authProvider = context.read<AuthProvider>();
     _router = AppRouter.createRouter(authProvider);
+
+    // Token hết hạn/không hợp lệ ở bất kỳ request nào -> tự đăng xuất, router
+    // sẽ tự điều hướng về /login (nghe qua refreshListenable: authProvider).
+    ApiClient.onUnauthorized = () {
+      if (authProvider.isAuthenticated) authProvider.logout();
+    };
   }
 
   @override

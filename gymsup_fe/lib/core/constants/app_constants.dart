@@ -32,6 +32,7 @@ class AppConstants {
   static const String aiChat = '/ai/chat';
   static const String aiGeneratePlan = '/ai/generate-plan';
   static const String aiScanEquipment = '/ai/scan-equipment';
+  static const String aiUsage = '/ai/usage/me';
 
   // Store
   static const String subscription = '/subscription';

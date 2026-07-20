@@ -2,8 +2,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
+import '../../../providers/ai_usage_provider.dart';
+import '../../widgets/ai/premium_feature_gate.dart';
 
 /// Màn hình phân tích hình ảnh/video bằng AI: vóc dáng, form tập, máy tập.
 class ScanEquipmentScreen extends StatefulWidget {
@@ -44,6 +47,9 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
   void initState() {
     super.initState();
     _currentMode = widget.initialMode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AiUsageProvider>().refresh();
+    });
   }
 
   Future<void> _pickMedia(ImageSource src) async {
@@ -51,20 +57,33 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     final selectedMode = _currentMode;
     final isVideo = selectedMode == 'form_check';
     final file = isVideo
-        ? await picker.pickVideo(source: src, maxDuration: const Duration(minutes: 1))
-        : await picker.pickImage(source: src, maxWidth: 1200, maxHeight: 1200, imageQuality: 80);
+        ? await picker.pickVideo(
+            source: src,
+            maxDuration: const Duration(minutes: 1),
+          )
+        : await picker.pickImage(
+            source: src,
+            maxWidth: 1200,
+            maxHeight: 1200,
+            imageQuality: 80,
+          );
 
     if (file == null) return;
 
     if (isVideo) {
       final lowerName = file.name.toLowerCase();
       if (!lowerName.endsWith('.mp4') && !lowerName.endsWith('.mov')) {
-        setState(() => _errorsByMode[selectedMode] = 'Chỉ hỗ trợ video MP4 hoặc MOV.');
+        setState(
+          () => _errorsByMode[selectedMode] = 'Chỉ hỗ trợ video MP4 hoặc MOV.',
+        );
         return;
       }
       const maxVideoBytes = 25 * 1024 * 1024;
       if (await file.length() > maxVideoBytes) {
-        setState(() => _errorsByMode[selectedMode] = 'Video không được vượt quá 25 MB.');
+        setState(
+          () =>
+              _errorsByMode[selectedMode] = 'Video không được vượt quá 25 MB.',
+        );
         return;
       }
     }
@@ -82,8 +101,11 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     final media = _mediaByMode[selectedMode];
     final isVideo = selectedMode == 'form_check';
     if (media == null) {
-      setState(() => _errorsByMode[selectedMode] =
-          isVideo ? 'Vui lòng chọn video trước khi phân tích.' : 'Vui lòng chọn ảnh trước khi phân tích.');
+      setState(
+        () => _errorsByMode[selectedMode] = isVideo
+            ? 'Vui lòng chọn video trước khi phân tích.'
+            : 'Vui lòng chọn ảnh trước khi phân tích.',
+      );
       return;
     }
 
@@ -109,9 +131,24 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
               fields: {'mode': selectedMode},
             );
 
+      if (response.statusCode == 403 || response.statusCode == 429) {
+        final data = ApiClient.decodeResponse(response);
+        final msg = data is Map ? data['message']?.toString() : null;
+        if (!mounted) return;
+        setState(
+          () => _errorsByMode[selectedMode] =
+              msg ?? 'Bạn không thể dùng tính năng này lúc này.',
+        );
+        return;
+      }
+
       if (response.statusCode != 200) {
         final data = ApiClient.decodeResponse(response);
-        throw Exception(data is Map ? (data['message'] ?? 'Không thể phân tích.') : 'Không thể phân tích.');
+        throw Exception(
+          data is Map
+              ? (data['message'] ?? 'Không thể phân tích.')
+              : 'Không thể phân tích.',
+        );
       }
 
       final result = ApiClient.decodeResponse(response) as Map<String, dynamic>;
@@ -119,20 +156,55 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
       setState(() => _resultsByMode[selectedMode] = result);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _errorsByMode[selectedMode] =
-          isVideo ? 'Không thể phân tích video. Vui lòng thử lại.' : 'Không thể phân tích ảnh. Vui lòng thử lại.');
+      setState(
+        () => _errorsByMode[selectedMode] = isVideo
+            ? 'Không thể phân tích video. Vui lòng thử lại.'
+            : 'Không thể phân tích ảnh. Vui lòng thử lại.',
+      );
     } finally {
       if (mounted) setState(() => _loadingByMode[selectedMode] = false);
+      if (mounted) context.read<AiUsageProvider>().refresh();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('AI Phân tích')),
-      body: Column(
+    final usage = context.watch<AiUsageProvider>();
+
+    Widget body;
+    if (usage.status == null && usage.isLoading) {
+      body = const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    } else if (usage.status != null && !usage.status!.isPremium) {
+      body = const PremiumFeatureGate(
+        title: 'Phân tích AI là tính năng Premium',
+        description:
+            'Nâng cấp Premium để dùng AI phân tích vóc dáng, form tập và máy tập từ ảnh/video.',
+      );
+    } else {
+      body = Column(
         children: [
           _buildModeSelector(),
+          Consumer<AiUsageProvider>(
+            builder: (context, usage, _) {
+              final analyze = usage.status?.analyze;
+              if (analyze == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'Phân tích AI: ${analyze.used}/${analyze.limit} lượt hôm nay',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: analyze.isExhausted
+                        ? AppColors.error
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              );
+            },
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -151,7 +223,12 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
             ),
           ),
         ],
-      ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('AI Phân tích')),
+      body: body,
     );
   }
 
@@ -159,12 +236,27 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
         children: [
-          _ModeTab(label: 'Vóc dáng', isActive: _currentMode == 'body_check', onTap: () => setState(() => _currentMode = 'body_check')),
-          _ModeTab(label: 'Form tập', isActive: _currentMode == 'form_check', onTap: () => setState(() => _currentMode = 'form_check')),
-          _ModeTab(label: 'Máy tập', isActive: _currentMode == 'equipment_info', onTap: () => setState(() => _currentMode = 'equipment_info')),
+          _ModeTab(
+            label: 'Vóc dáng',
+            isActive: _currentMode == 'body_check',
+            onTap: () => setState(() => _currentMode = 'body_check'),
+          ),
+          _ModeTab(
+            label: 'Form tập',
+            isActive: _currentMode == 'form_check',
+            onTap: () => setState(() => _currentMode = 'form_check'),
+          ),
+          _ModeTab(
+            label: 'Máy tập',
+            isActive: _currentMode == 'equipment_info',
+            onTap: () => setState(() => _currentMode = 'equipment_info'),
+          ),
         ],
       ),
     );
@@ -174,13 +266,16 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     String guide = '';
     switch (_currentMode) {
       case 'body_check':
-        guide = 'Chụp ảnh toàn thân hoặc nửa thân rõ ràng, đủ sáng. Kết quả chỉ mang tính tham khảo, không phải chẩn đoán y tế.';
+        guide =
+            'Chụp ảnh toàn thân hoặc nửa thân rõ ràng, đủ sáng. Kết quả chỉ mang tính tham khảo, không phải chẩn đoán y tế.';
         break;
       case 'form_check':
-        guide = 'Quay video toàn bộ động tác, tối đa 1 phút và 25 MB. Góc quay bên hông hoặc 45 độ thường cho kết quả rõ nhất.';
+        guide =
+            'Quay video toàn bộ động tác, tối đa 1 phút và 25 MB. Góc quay bên hông hoặc 45 độ thường cho kết quả rõ nhất.';
         break;
       case 'equipment_info':
-        guide = 'Chụp rõ máy tập hoặc dụng cụ, tránh ảnh quá gần làm mất toàn cảnh máy.';
+        guide =
+            'Chụp rõ máy tập hoặc dụng cụ, tránh ảnh quá gần làm mất toàn cảnh máy.';
         break;
     }
     return Container(
@@ -194,7 +289,16 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
         children: [
           const Icon(Icons.info_outline, color: AppColors.info, size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Text(guide, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, height: 1.4))),
+          Expanded(
+            child: Text(
+              guide,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -214,31 +318,58 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
         ),
         child: media != null
             ? (isVideo
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.videocam, size: 64, color: AppColors.primary),
-                      const SizedBox(height: 12),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(media.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text('Video đã sẵn sàng để phân tích', style: TextStyle(color: AppColors.textSecondary)),
-                    ],
-                  )
-                : ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: kIsWeb
-                        ? Image.network(media.path, fit: BoxFit.cover, width: double.infinity)
-                        : Image.file(File(media.path), fit: BoxFit.cover, width: double.infinity),
-                  ))
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.videocam,
+                          size: 64,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Text(
+                            media.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Video đã sẵn sàng để phân tích',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: kIsWeb
+                          ? Image.network(
+                              media.path,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                            )
+                          : Image.file(
+                              File(media.path),
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                            ),
+                    ))
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(isVideo ? Icons.videocam_outlined : Icons.image_outlined, size: 48, color: AppColors.textHint),
+                  Icon(
+                    isVideo ? Icons.videocam_outlined : Icons.image_outlined,
+                    size: 48,
+                    color: AppColors.textHint,
+                  ),
                   const SizedBox(height: 12),
-                  Text(isVideo ? 'Bấm để chọn video' : 'Bấm để chọn ảnh', style: const TextStyle(color: AppColors.textHint)),
+                  Text(
+                    isVideo ? 'Bấm để chọn video' : 'Bấm để chọn ảnh',
+                    style: const TextStyle(color: AppColors.textHint),
+                  ),
                 ],
               ),
       ),
@@ -250,7 +381,9 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.cardBackground,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -264,7 +397,9 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
               },
             ),
             ListTile(
-              leading: Icon(isVideo ? Icons.video_library : Icons.photo_library),
+              leading: Icon(
+                isVideo ? Icons.video_library : Icons.photo_library,
+              ),
               title: Text(isVideo ? 'Chọn video từ thư viện' : 'Thư viện ảnh'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -288,9 +423,18 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
             child: ElevatedButton.icon(
               onPressed: isLoading ? null : _analyzeMedia,
               icon: isLoading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.auto_awesome, size: 20),
-              label: Text(isLoading ? 'Đang phân tích...' : 'Bắt đầu phân tích'),
+              label: Text(
+                isLoading ? 'Đang phân tích...' : 'Bắt đầu phân tích',
+              ),
             ),
           ),
         if (hasMedia && !isLoading) ...[
@@ -311,7 +455,12 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
 
     if (isLoading) return const SizedBox.shrink();
     if (error != null) {
-      return Center(child: Text(error, style: const TextStyle(color: AppColors.error, fontSize: 13)));
+      return Center(
+        child: Text(
+          error,
+          style: const TextStyle(color: AppColors.error, fontSize: 13),
+        ),
+      );
     }
     if (result == null) return _buildEmptyState();
 
@@ -331,19 +480,30 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     String msg = '';
     switch (_currentMode) {
       case 'body_check':
-        msg = 'Bạn chưa phân tích vóc dáng.\nHãy chọn ảnh cơ thể rõ ràng rồi bấm phân tích.';
+        msg =
+            'Bạn chưa phân tích vóc dáng.\nHãy chọn ảnh cơ thể rõ ràng rồi bấm phân tích.';
         break;
       case 'form_check':
-        msg = 'Bạn chưa kiểm tra form tập.\nHãy chọn video động tác rồi bấm phân tích.';
+        msg =
+            'Bạn chưa kiểm tra form tập.\nHãy chọn video động tác rồi bấm phân tích.';
         break;
       case 'equipment_info':
-        msg = 'Bạn chưa phân tích máy tập.\nHãy chọn ảnh máy tập hoặc dụng cụ rồi bấm phân tích.';
+        msg =
+            'Bạn chưa phân tích máy tập.\nHãy chọn ảnh máy tập hoặc dụng cụ rồi bấm phân tích.';
         break;
     }
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Text(msg, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5)),
+        child: Text(
+          msg,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
       ),
     );
   }
@@ -352,12 +512,38 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Column(
       children: [
         _buildSummaryCard(data),
-        _buildListSection('Nhận xét vóc dáng', data['bodyObservations'], Icons.visibility_outlined),
-        _buildListSection('Nhóm cơ nên ưu tiên', data['priorityMuscles'], Icons.star_outline, isPrimary: true),
-        _buildListSection('Nhóm cơ liên quan', data['muscles'], Icons.fitness_center),
-        _buildListSection('Bài tập gợi ý', data['suggestedExercises'], Icons.directions_run),
-        _buildListSection('Lời khuyên tập luyện', data['trainingAdvice'], Icons.lightbulb_outline),
-        _buildListSection('Cảnh báo', data['warnings'], Icons.warning_amber_outlined, color: Colors.orangeAccent),
+        _buildListSection(
+          'Nhận xét vóc dáng',
+          data['bodyObservations'],
+          Icons.visibility_outlined,
+        ),
+        _buildListSection(
+          'Nhóm cơ nên ưu tiên',
+          data['priorityMuscles'],
+          Icons.star_outline,
+          isPrimary: true,
+        ),
+        _buildListSection(
+          'Nhóm cơ liên quan',
+          data['muscles'],
+          Icons.fitness_center,
+        ),
+        _buildListSection(
+          'Bài tập gợi ý',
+          data['suggestedExercises'],
+          Icons.directions_run,
+        ),
+        _buildListSection(
+          'Lời khuyên tập luyện',
+          data['trainingAdvice'],
+          Icons.lightbulb_outline,
+        ),
+        _buildListSection(
+          'Cảnh báo',
+          data['warnings'],
+          Icons.warning_amber_outlined,
+          color: Colors.orangeAccent,
+        ),
         const SizedBox(height: 20),
         _buildSendToChatButton(data),
       ],
@@ -368,16 +554,57 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Column(
       children: [
         _buildSummaryCard(data),
-        _buildListSection('Bài tập phát hiện', data['detectedExercise'], Icons.fitness_center, isPrimary: true),
-        _buildListSection('Đánh giá tổng quan', data['overallVerdict'], Icons.assignment_outlined),
-        _buildListSection('Tóm tắt chuyển động', data['movementSummary'], Icons.directions_run),
-        _buildListSection('Lỗi nghiêm trọng', data['majorIssues'], Icons.error_outline, color: Colors.redAccent),
-        _buildListSection('Lỗi cần cải thiện', data['minorIssues'], Icons.info_outline, color: Colors.orangeAccent),
-        _buildListSection('Điểm thực hiện đúng', data['correctPoints'], Icons.check_circle_outline, color: AppColors.primary),
+        _buildListSection(
+          'Bài tập phát hiện',
+          data['detectedExercise'],
+          Icons.fitness_center,
+          isPrimary: true,
+        ),
+        _buildListSection(
+          'Đánh giá tổng quan',
+          data['overallVerdict'],
+          Icons.assignment_outlined,
+        ),
+        _buildListSection(
+          'Tóm tắt chuyển động',
+          data['movementSummary'],
+          Icons.directions_run,
+        ),
+        _buildListSection(
+          'Lỗi nghiêm trọng',
+          data['majorIssues'],
+          Icons.error_outline,
+          color: Colors.redAccent,
+        ),
+        _buildListSection(
+          'Lỗi cần cải thiện',
+          data['minorIssues'],
+          Icons.info_outline,
+          color: Colors.orangeAccent,
+        ),
+        _buildListSection(
+          'Điểm thực hiện đúng',
+          data['correctPoints'],
+          Icons.check_circle_outline,
+          color: AppColors.primary,
+        ),
         _buildListSection('Cơ tham gia', data['muscles'], Icons.fitness_center),
-        _buildListSection('Cue sửa kỹ thuật', data['correctiveCues'], Icons.build_outlined),
-        _buildListSection('Cách cải thiện', data['suggestedFixes'], Icons.lightbulb_outline),
-        _buildListSection('Cảnh báo an toàn', data['warnings'], Icons.shield_outlined, color: Colors.redAccent),
+        _buildListSection(
+          'Cue sửa kỹ thuật',
+          data['correctiveCues'],
+          Icons.build_outlined,
+        ),
+        _buildListSection(
+          'Cách cải thiện',
+          data['suggestedFixes'],
+          Icons.lightbulb_outline,
+        ),
+        _buildListSection(
+          'Cảnh báo an toàn',
+          data['warnings'],
+          Icons.shield_outlined,
+          color: Colors.redAccent,
+        ),
         const SizedBox(height: 20),
         _buildSendToChatButton(data),
       ],
@@ -388,11 +615,33 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
     return Column(
       children: [
         _buildSummaryCard(data),
-        _buildListSection('Vật thể phát hiện', data['detectedItems'], Icons.grid_view),
-        _buildListSection('Nhóm cơ tác động', data['muscles'], Icons.bolt, isPrimary: true),
-        _buildListSection('Bài tập thực hiện', data['suggestedExercises'], Icons.play_circle_outline),
-        _buildListSection('Cách dùng / Lời khuyên', data['trainingAdvice'], Icons.help_outline),
-        _buildListSection('Cảnh báo an toàn', data['warnings'], Icons.warning_amber_outlined, color: Colors.orangeAccent),
+        _buildListSection(
+          'Vật thể phát hiện',
+          data['detectedItems'],
+          Icons.grid_view,
+        ),
+        _buildListSection(
+          'Nhóm cơ tác động',
+          data['muscles'],
+          Icons.bolt,
+          isPrimary: true,
+        ),
+        _buildListSection(
+          'Bài tập thực hiện',
+          data['suggestedExercises'],
+          Icons.play_circle_outline,
+        ),
+        _buildListSection(
+          'Cách dùng / Lời khuyên',
+          data['trainingAdvice'],
+          Icons.help_outline,
+        ),
+        _buildListSection(
+          'Cảnh báo an toàn',
+          data['warnings'],
+          Icons.warning_amber_outlined,
+          color: Colors.orangeAccent,
+        ),
         const SizedBox(height: 20),
         _buildSendToChatButton(data),
       ],
@@ -413,44 +662,90 @@ class _ScanEquipmentScreenState extends State<ScanEquipmentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title.toUpperCase(), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
           if (summary.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(summary, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.5)),
+            Text(
+              summary,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildListSection(String title, dynamic list, IconData icon, {bool isPrimary = false, Color? color}) {
-    if (list == null || (list is List && list.isEmpty)) return const SizedBox.shrink();
+  Widget _buildListSection(
+    String title,
+    dynamic list,
+    IconData icon, {
+    bool isPrimary = false,
+    Color? color,
+  }) {
+    if (list == null || (list is List && list.isEmpty))
+      return const SizedBox.shrink();
     final items = list is List ? list : [list];
-    final themeColor = color ?? (isPrimary ? AppColors.primary : AppColors.textPrimary);
+    final themeColor =
+        color ?? (isPrimary ? AppColors.primary : AppColors.textPrimary);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Icon(icon, color: themeColor, size: 18),
-            const SizedBox(width: 10),
-            Text(title, style: TextStyle(color: themeColor, fontWeight: FontWeight.w800, fontSize: 13)),
-          ]),
-          const SizedBox(height: 12),
-          ...items.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('• ', style: TextStyle(color: AppColors.textHint)),
-                    Expanded(child: Text(item.toString(), style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.4))),
-                  ],
+          Row(
+            children: [
+              Icon(icon, color: themeColor, size: 18),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: TextStyle(
+                  color: themeColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
                 ),
-              )),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ', style: TextStyle(color: AppColors.textHint)),
+                  Expanded(
+                    child: Text(
+                      item.toString(),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -493,7 +788,11 @@ class _ModeTab extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _ModeTab({required this.label, required this.isActive, required this.onTap});
+  const _ModeTab({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -510,7 +809,11 @@ class _ModeTab extends StatelessWidget {
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(color: isActive ? Colors.white : AppColors.textSecondary, fontWeight: FontWeight.w800, fontSize: 12),
+            style: TextStyle(
+              color: isActive ? Colors.white : AppColors.textSecondary,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
           ),
         ),
       ),
